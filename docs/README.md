@@ -27,7 +27,7 @@ Custos protects your machine from unauthorized USB devices. Use an explit policy
 ## NixOS Module
 
 Custos provides a NixOS module to easily deploy it on NixOS systems.
-The module lives in [`nix/module.nix`](./nix/module.nix) and can be used to setup and confgiure the daemon and the policy list.
+The module lives in [`nix/module.nix`](../nix/module.nix) and can be used to setup and confgiure the daemon and the policy list.
 
 ```nix
 { inputs, pkgs, ... }:
