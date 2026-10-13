@@ -3,16 +3,20 @@ mod changes;
 mod control_server;
 mod state;
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;
 
 use std::path::PathBuf;
 
 use activity::wait_for_activity;
 use control_server::{
-  bind_control_socket, cleanup_control_socket, handle_client,
+  bind_control_socket,
+  cleanup_control_socket,
+  handle_client,
 };
-use tracing::{info, warn};
+use tracing::{
+  info,
+  warn,
+};
 
 use self::state::State;
 use crate::{
@@ -20,7 +24,10 @@ use crate::{
   error::Result,
   policy::Policy,
   signal::ShutdownSignal,
-  sysfs::{ControllerAuthorizationState, Scanner},
+  sysfs::{
+    ControllerAuthorizationState,
+    Scanner,
+  },
   uevent::UsbEventMonitor,
 };
 
@@ -96,8 +103,8 @@ pub fn run_daemon(config: Config, policy: Policy) -> Result<()> {
 }
 
 struct DaemonCleanup {
-  scanner: Scanner,
-  socket_path: PathBuf,
+  scanner:            Scanner,
+  socket_path:        PathBuf,
   controller_restore: Vec<ControllerAuthorizationState>,
 }
 

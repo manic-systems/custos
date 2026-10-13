@@ -1,10 +1,22 @@
-use std::{fs, path::Path};
+use std::{
+  fs,
+  path::Path,
+};
 
-use serde::{Deserialize, Serialize};
+use serde::{
+  Deserialize,
+  Serialize,
+};
 
 use crate::{
-  config::{Config, Mode},
-  error::{Error, Result},
+  config::{
+    Config,
+    Mode,
+  },
+  error::{
+    Error,
+    Result,
+  },
   sysfs::UsbDevice,
 };
 
@@ -35,14 +47,14 @@ impl Action {
 #[serde(default, deny_unknown_fields)]
 pub struct Policy {
   pub default: Action,
-  pub rules: Vec<Rule>,
+  pub rules:   Vec<Rule>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Rule {
-  pub name: String,
-  pub action: Action,
+  pub name:    String,
+  pub action:  Action,
   #[serde(rename = "match", default)]
   pub matcher: DeviceMatcher,
 }
@@ -50,15 +62,15 @@ pub struct Rule {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct DeviceMatcher {
-  pub vendor_id: Option<String>,
-  pub product_id: Option<String>,
-  pub serial: Option<String>,
-  pub product_name: Option<String>,
-  pub connect_type: Option<String>,
-  pub port_path: Option<String>,
+  pub vendor_id:       Option<String>,
+  pub product_id:      Option<String>,
+  pub serial:          Option<String>,
+  pub product_name:    Option<String>,
+  pub connect_type:    Option<String>,
+  pub port_path:       Option<String>,
   pub descriptor_hash: Option<String>,
-  pub is_hub: Option<bool>,
-  pub interfaces: InterfaceMatcher,
+  pub is_hub:          Option<bool>,
+  pub interfaces:      InterfaceMatcher,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -71,16 +83,16 @@ pub struct InterfaceMatcher {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Decision {
   pub device_id: u32,
-  pub action: Action,
-  pub reason: String,
-  pub rule: Option<String>,
+  pub action:    Action,
+  pub reason:    String,
+  pub rule:      Option<String>,
 }
 
 impl Default for Policy {
   fn default() -> Self {
     Self {
       default: Action::Block,
-      rules: Vec::new(),
+      rules:   Vec::new(),
     }
   }
 }
@@ -102,13 +114,15 @@ impl Policy {
       {
         Ok(Self {
           default: config.default_action,
-          rules: Vec::new(),
+          rules:   Vec::new(),
         })
       },
-      Err(error) => Err(Error::io(
-        format!("failed to read policy {}", path.display()),
-        error,
-      )),
+      Err(error) => {
+        Err(Error::io(
+          format!("failed to read policy {}", path.display()),
+          error,
+        ))
+      },
     }
   }
 
@@ -148,18 +162,18 @@ impl Policy {
       if rule.matcher.matches(device) {
         return Decision {
           device_id: device.id,
-          action: rule.action,
-          reason: "matched rule".to_string(),
-          rule: Some(rule.name.clone()),
+          action:    rule.action,
+          reason:    "matched rule".to_string(),
+          rule:      Some(rule.name.clone()),
         };
       }
     }
 
     Decision {
       device_id: device.id,
-      action: default_action(self.default, device),
-      reason: default_reason(self.default, device).to_string(),
-      rule: None,
+      action:    default_action(self.default, device),
+      reason:    default_reason(self.default, device).to_string(),
+      rule:      None,
     }
   }
 
@@ -431,18 +445,21 @@ pub fn generate_policy(devices: &[UsbDevice]) -> Policy {
     .iter()
     .map(|device| {
       let mut matcher = DeviceMatcher {
-        vendor_id: Some(device.vendor_id.clone()),
-        product_id: Some(device.product_id.clone()),
-        serial: device.serial.clone().filter(|value| !value.is_empty()),
-        product_name: None,
-        connect_type: device
+        vendor_id:       Some(device.vendor_id.clone()),
+        product_id:      Some(device.product_id.clone()),
+        serial:          device
+          .serial
+          .clone()
+          .filter(|value| !value.is_empty()),
+        product_name:    None,
+        connect_type:    device
           .connect_type
           .clone()
           .filter(|value| !value.is_empty()),
-        port_path: None,
+        port_path:       None,
         descriptor_hash: device.descriptor_hash.clone(),
-        is_hub: Some(device.is_hub),
-        interfaces: InterfaceMatcher::default(),
+        is_hub:          Some(device.is_hub),
+        interfaces:      InterfaceMatcher::default(),
       };
 
       if matcher.serial.is_none() {
@@ -483,18 +500,18 @@ mod tests {
 
   fn sample_device() -> UsbDevice {
     UsbDevice {
-      id: 42,
-      sysfs_path: PathBuf::from("/sys/bus/usb/devices/1-2"),
-      port_path: "1-2".to_string(),
-      vendor_id: "feed".to_string(),
-      product_id: "1307".to_string(),
-      product_name: Some("Test Keyboard".to_string()),
-      serial: Some("abc123".to_string()),
-      connect_type: Some("hotplug".to_string()),
-      authorized: Some(true),
+      id:              42,
+      sysfs_path:      PathBuf::from("/sys/bus/usb/devices/1-2"),
+      port_path:       "1-2".to_string(),
+      vendor_id:       "feed".to_string(),
+      product_id:      "1307".to_string(),
+      product_name:    Some("Test Keyboard".to_string()),
+      serial:          Some("abc123".to_string()),
+      connect_type:    Some("hotplug".to_string()),
+      authorized:      Some(true),
       descriptor_hash: Some("descriptor-sha256".to_string()),
-      interfaces: vec!["03:01:01".to_string(), "03:00:00".to_string()],
-      is_hub: false,
+      interfaces:      vec!["03:01:01".to_string(), "03:00:00".to_string()],
+      is_hub:          false,
     }
   }
 
@@ -521,9 +538,9 @@ mod tests {
   fn startup_validation_requires_endpoint_allow_rule() {
     let policy = Policy {
       default: Action::Block,
-      rules: vec![Rule {
-        name: "hub passthrough".to_string(),
-        action: Action::Allow,
+      rules:   vec![Rule {
+        name:    "hub passthrough".to_string(),
+        action:  Action::Allow,
         matcher: DeviceMatcher {
           is_hub: Some(true),
           ..DeviceMatcher::default()
@@ -541,9 +558,9 @@ mod tests {
   fn policy_validation_rejects_empty_matcher() {
     let policy = Policy {
       default: Action::Block,
-      rules: vec![Rule {
-        name: "empty".to_string(),
-        action: Action::Block,
+      rules:   vec![Rule {
+        name:    "empty".to_string(),
+        action:  Action::Block,
         matcher: DeviceMatcher::default(),
       }],
     };
@@ -558,9 +575,9 @@ mod tests {
   fn policy_validation_rejects_malformed_interface_pattern() {
     let policy = Policy {
       default: Action::Block,
-      rules: vec![Rule {
-        name: "bad interface".to_string(),
-        action: Action::Allow,
+      rules:   vec![Rule {
+        name:    "bad interface".to_string(),
+        action:  Action::Allow,
         matcher: DeviceMatcher {
           interfaces: InterfaceMatcher {
             any: vec!["03:*".to_string()],
@@ -611,18 +628,18 @@ all = ["03:01:01"]
   fn first_matching_rule_wins_for_allow_and_block() {
     let policy = Policy {
       default: Action::Block,
-      rules: vec![
+      rules:   vec![
         Rule {
-          name: "serial block".to_string(),
-          action: Action::Block,
+          name:    "serial block".to_string(),
+          action:  Action::Block,
           matcher: DeviceMatcher {
             serial: Some("abc123".to_string()),
             ..DeviceMatcher::default()
           },
         },
         Rule {
-          name: "vendor allow".to_string(),
-          action: Action::Allow,
+          name:    "vendor allow".to_string(),
+          action:  Action::Allow,
           matcher: DeviceMatcher {
             vendor_id: Some("feed".to_string()),
             product_id: Some("1307".to_string()),
@@ -657,9 +674,9 @@ all = ["03:01:01"]
     device.is_hub = true;
     let policy = Policy {
       default: Action::Block,
-      rules: vec![Rule {
-        name: "block hubs".to_string(),
-        action: Action::Block,
+      rules:   vec![Rule {
+        name:    "block hubs".to_string(),
+        action:  Action::Block,
         matcher: DeviceMatcher {
           is_hub: Some(true),
           ..DeviceMatcher::default()

@@ -1,12 +1,21 @@
 use std::{
   fs,
-  path::{Path, PathBuf},
+  path::{
+    Path,
+    PathBuf,
+  },
 };
 
-use serde::{Deserialize, Serialize};
+use serde::{
+  Deserialize,
+  Serialize,
+};
 
 use crate::{
-  error::{Error, Result},
+  error::{
+    Error,
+    Result,
+  },
   policy::Action,
 };
 
@@ -25,19 +34,19 @@ pub enum Mode {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
-  pub mode: Mode,
-  pub policy_path: PathBuf,
-  pub socket_path: PathBuf,
-  pub sysfs_root: PathBuf,
+  pub mode:                      Mode,
+  pub policy_path:               PathBuf,
+  pub socket_path:               PathBuf,
+  pub sysfs_root:                PathBuf,
   pub unsafe_allow_empty_policy: bool,
-  pub default_action: Action,
-  pub controllers: ControllerConfig,
+  pub default_action:            Action,
+  pub controllers:               ControllerConfig,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ControllerConfig {
-  pub authorized_default: AuthorizedDefault,
+  pub authorized_default:  AuthorizedDefault,
   pub restore_on_shutdown: bool,
 }
 
@@ -52,13 +61,13 @@ pub enum AuthorizedDefault {
 impl Default for Config {
   fn default() -> Self {
     Self {
-      mode: Mode::default(),
-      policy_path: PathBuf::from("/etc/custos/policy.toml"),
-      socket_path: PathBuf::from("/run/custos/control.sock"),
-      sysfs_root: PathBuf::from("/sys"),
+      mode:                      Mode::default(),
+      policy_path:               PathBuf::from("/etc/custos/policy.toml"),
+      socket_path:               PathBuf::from("/run/custos/control.sock"),
+      sysfs_root:                PathBuf::from("/sys"),
       unsafe_allow_empty_policy: false,
-      default_action: Action::Block,
-      controllers: ControllerConfig::default(),
+      default_action:            Action::Block,
+      controllers:               ControllerConfig::default(),
     }
   }
 }
@@ -66,7 +75,7 @@ impl Default for Config {
 impl Default for ControllerConfig {
   fn default() -> Self {
     Self {
-      authorized_default: AuthorizedDefault::None,
+      authorized_default:  AuthorizedDefault::None,
       restore_on_shutdown: false,
     }
   }
@@ -74,14 +83,18 @@ impl Default for ControllerConfig {
 
 pub fn load_config(path: &Path) -> Result<Config> {
   match fs::read_to_string(path) {
-    Ok(contents) => toml::from_str(&contents)
-      .map_err(|error| Error::Config(format!("{}: {error}", path.display()))),
+    Ok(contents) => {
+      toml::from_str(&contents)
+        .map_err(|error| Error::Config(format!("{}: {error}", path.display())))
+    },
     Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
       Ok(Config::default())
     },
-    Err(error) => Err(Error::io(
-      format!("failed to read config {}", path.display()),
-      error,
-    )),
+    Err(error) => {
+      Err(Error::io(
+        format!("failed to read config {}", path.display()),
+        error,
+      ))
+    },
   }
 }

@@ -349,10 +349,7 @@ fn render_dry_run_report(
 
   let mut output = String::new();
   if !report.controller_updates.is_empty() {
-    render_controller_updates_table(
-      &mut output,
-      &report.controller_updates,
-    )?;
+    render_controller_updates_table(&mut output, &report.controller_updates)?;
   }
   render_device_table(
     &mut output,
@@ -372,7 +369,13 @@ fn validate(args: ValidateArgs) -> Result<()> {
   }
   let policy = Policy::load(&config.policy_path, &config)?;
   policy.validate_for_start(&config)?;
-  print!("{}", render_message_report("VALIDATION REPORT", "CONFIGURATION AND POLICY ARE VALID")?);
+  print!(
+    "{}",
+    render_message_report(
+      "VALIDATION REPORT",
+      "CONFIGURATION AND POLICY ARE VALID"
+    )?
+  );
   Ok(())
 }
 
@@ -434,10 +437,7 @@ fn render_response(
       let rows = vec![
         vec!["MODE".to_string(), mode_label(*mode).to_string()],
         vec!["DEVICES".to_string(), device_count.to_string()],
-        vec![
-          "MANUAL OVERRIDES".to_string(),
-          override_count.to_string(),
-        ],
+        vec!["MANUAL OVERRIDES".to_string(), override_count.to_string()],
         vec!["SOCKET".to_string(), socket_path.clone()],
         vec!["POLICY".to_string(), policy_path.clone()],
       ];
@@ -469,10 +469,7 @@ fn render_device_table(
   titles: &[&str],
   devices: &[DeviceState],
 ) -> Result<()> {
-  let rows = devices
-    .iter()
-    .map(device_table_row)
-    .collect::<Vec<_>>();
+  let rows = devices.iter().map(device_table_row).collect::<Vec<_>>();
   render_report_table(
     output,
     titles,
@@ -554,12 +551,9 @@ fn render_controller_updates_table(
 
 fn render_message_report(title: &str, message: &str) -> Result<String> {
   let mut output = String::new();
-  render_report_table(
-    &mut output,
-    &[title],
-    &["MESSAGE"],
-    &[vec![message.to_string()]],
-  )?;
+  render_report_table(&mut output, &[title], &["MESSAGE"], &[vec![
+    message.to_string(),
+  ]])?;
   Ok(output)
 }
 
@@ -596,7 +590,10 @@ fn report_table_widths(
     ));
   }
 
-  let mut widths = headers.iter().map(|header| header.len()).collect::<Vec<_>>();
+  let mut widths = headers
+    .iter()
+    .map(|header| header.len())
+    .collect::<Vec<_>>();
   for row in rows {
     if row.len() != headers.len() {
       return Err(Error::Protocol(

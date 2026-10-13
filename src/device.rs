@@ -1,11 +1,17 @@
-use serde::{Deserialize, Serialize};
+use serde::{
+  Deserialize,
+  Serialize,
+};
 
-use crate::{policy::Decision, sysfs::UsbDevice};
+use crate::{
+  policy::Decision,
+  sysfs::UsbDevice,
+};
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct DeviceState {
   #[serde(flatten)]
-  pub device: UsbDevice,
+  pub device:   UsbDevice,
   pub decision: Decision,
 }
 

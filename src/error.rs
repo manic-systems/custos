@@ -8,7 +8,7 @@ pub enum Error {
   Io {
     context: String,
     #[source]
-    source: io::Error,
+    source:  io::Error,
   },
   #[error("configuration error: {0}")]
   Config(String),
