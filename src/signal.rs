@@ -1,20 +1,33 @@
 use std::{
   io,
-  os::fd::{AsFd, BorrowedFd},
+  os::fd::{
+    AsFd,
+    BorrowedFd,
+  },
 };
 
 use nix::{
   errno::Errno,
   sys::{
-    signal::{SigSet, SigmaskHow, Signal},
-    signalfd::{SfdFlags, SignalFd},
+    signal::{
+      SigSet,
+      SigmaskHow,
+      Signal,
+    },
+    signalfd::{
+      SfdFlags,
+      SignalFd,
+    },
   },
 };
 
-use crate::error::{Error, Result};
+use crate::error::{
+  Error,
+  Result,
+};
 
 pub struct ShutdownSignal {
-  fd: SignalFd,
+  fd:            SignalFd,
   previous_mask: SigSet,
 }
 

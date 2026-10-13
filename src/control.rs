@@ -1,16 +1,29 @@
 use std::{
-  io::{BufRead, BufReader, Write},
+  io::{
+    BufRead,
+    BufReader,
+    Write,
+  },
   os::unix::net::UnixStream,
   path::Path,
 };
 
-use serde::{Deserialize, Serialize};
+use serde::{
+  Deserialize,
+  Serialize,
+};
 
 use crate::{
   config::Mode,
   device::DeviceState,
-  error::{Error, Result},
-  policy::{Action, Decision},
+  error::{
+    Error,
+    Result,
+  },
+  policy::{
+    Action,
+    Decision,
+  },
 };
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -31,11 +44,11 @@ pub enum Response {
     message: String,
   },
   Status {
-    mode: Mode,
-    device_count: usize,
+    mode:           Mode,
+    device_count:   usize,
     override_count: usize,
-    socket_path: String,
-    policy_path: String,
+    socket_path:    String,
+    policy_path:    String,
   },
   Devices {
     devices: Vec<DeviceState>,

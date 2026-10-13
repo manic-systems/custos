@@ -2,22 +2,43 @@ use std::{
   error::Error as StdError,
   fs,
   os::unix::fs::PermissionsExt,
-  path::{Path, PathBuf},
+  path::{
+    Path,
+    PathBuf,
+  },
 };
 
 use super::{
   changes::{
-    DeviceChangeKind, ExplicitDecisionSource, collect_device_change_events,
+    DeviceChangeKind,
+    ExplicitDecisionSource,
+    collect_device_change_events,
     explicit_decision_source,
   },
-  control_server::{bind_control_socket, handle_client},
+  control_server::{
+    bind_control_socket,
+    handle_client,
+  },
   state::State,
 };
 use crate::{
-  config::{Config, Mode},
-  control::{Request, Response, send_request},
+  config::{
+    Config,
+    Mode,
+  },
+  control::{
+    Request,
+    Response,
+    send_request,
+  },
   device::DeviceState,
-  policy::{Action, Decision, DeviceMatcher, Policy, Rule},
+  policy::{
+    Action,
+    Decision,
+    DeviceMatcher,
+    Policy,
+    Rule,
+  },
   sysfs::Scanner,
 };
 
@@ -83,9 +104,9 @@ fn report_state(
 fn allow_policy() -> Policy {
   Policy {
     default: Action::Block,
-    rules: vec![Rule {
-      name: "trusted device".to_string(),
-      action: Action::Allow,
+    rules:   vec![Rule {
+      name:    "trusted device".to_string(),
+      action:  Action::Allow,
       matcher: DeviceMatcher {
         vendor_id: Some("feed".to_string()),
         product_id: Some("1307".to_string()),
@@ -122,18 +143,22 @@ fn join_server(
 fn require_devices(response: Response) -> TestResult<Vec<DeviceState>> {
   match response {
     Response::Devices { devices } => Ok(devices),
-    other => Err(test_error(format!(
-      "expected devices response, got {other:?}"
-    ))),
+    other => {
+      Err(test_error(format!(
+        "expected devices response, got {other:?}"
+      )))
+    },
   }
 }
 
 fn require_decisions(response: Response) -> TestResult<Vec<Decision>> {
   match response {
     Response::Decisions { decisions } => Ok(decisions),
-    other => Err(test_error(format!(
-      "expected decisions response, got {other:?}"
-    ))),
+    other => {
+      Err(test_error(format!(
+        "expected decisions response, got {other:?}"
+      )))
+    },
   }
 }
 
@@ -147,9 +172,11 @@ fn require_ok(response: Response) -> TestResult<String> {
 fn require_error(response: Response) -> TestResult<String> {
   match response {
     Response::Error { message } => Ok(message),
-    other => Err(test_error(format!(
-      "expected error response, got {other:?}"
-    ))),
+    other => {
+      Err(test_error(format!(
+        "expected error response, got {other:?}"
+      )))
+    },
   }
 }
 
@@ -251,9 +278,9 @@ fn reports_same_path_identity_change_as_remove_and_connect() {
   current.product_id = "babe".to_string();
   let current_decision = Decision {
     device_id: 2,
-    action: Action::Block,
-    reason: "default action".to_string(),
-    rule: None,
+    action:    Action::Block,
+    reason:    "default action".to_string(),
+    rule:      None,
   };
   let current = DeviceState::new(current, current_decision);
 
@@ -279,15 +306,12 @@ fn reports_existing_device_decision_change() {
 
 #[test]
 fn default_decision_is_not_explicit() {
-  let device = DeviceState::new(
-    report_device(1, "1-2"),
-    Decision {
-      device_id: 1,
-      action: Action::Block,
-      reason: "default action".to_string(),
-      rule: None,
-    },
-  );
+  let device = DeviceState::new(report_device(1, "1-2"), Decision {
+    device_id: 1,
+    action:    Action::Block,
+    reason:    "default action".to_string(),
+    rule:      None,
+  });
 
   let events = collect_device_change_events(&[], &[device]);
 
@@ -386,25 +410,20 @@ product_id = "1307"
     require_devices(send_request(&socket_path, &Request::ListDevices)?)?;
   assert_eq!(devices[0].decision.action, Action::Allow);
 
-  require_ok(send_request(
-    &socket_path,
-    &Request::Apply {
-      id: devices[0].device.id,
-      action: Action::Block,
-    },
-  )?)?;
+  require_ok(send_request(&socket_path, &Request::Apply {
+    id:     devices[0].device.id,
+    action: Action::Block,
+  })?)?;
   assert_eq!(fs::read_to_string(&authorized_path)?, "0\n");
 
   let devices =
     require_devices(send_request(&socket_path, &Request::ListDevices)?)?;
   assert_eq!(devices[0].decision.action, Action::Block);
 
-  let message = require_ok(send_request(
-    &socket_path,
-    &Request::ClearOverride {
+  let message =
+    require_ok(send_request(&socket_path, &Request::ClearOverride {
       id: devices[0].device.id,
-    },
-  )?)?;
+    })?)?;
   assert!(message.contains("policy now allow"));
   assert_eq!(fs::read_to_string(&authorized_path)?, "1\n");
 
@@ -471,13 +490,10 @@ fn control_request_reports_command_errors() -> TestResult {
   let state = State::new(config, Policy::default());
 
   let server = serve_control_requests(listener, scanner, state, 1);
-  let response = send_request(
-    &socket_path,
-    &Request::Apply {
-      id: 99,
-      action: Action::Block,
-    },
-  )?;
+  let response = send_request(&socket_path, &Request::Apply {
+    id:     99,
+    action: Action::Block,
+  })?;
   join_server(server)?;
 
   let message = require_error(response)?;
@@ -488,7 +504,11 @@ fn control_request_reports_command_errors() -> TestResult {
 #[test]
 fn oversized_control_request_is_rejected() -> TestResult {
   use std::{
-    io::{BufRead, BufReader, Write},
+    io::{
+      BufRead,
+      BufReader,
+      Write,
+    },
     os::unix::net::UnixStream,
   };
 
@@ -527,7 +547,7 @@ fn manual_allow_override_survives_refresh_for_same_identity() -> TestResult {
   };
   let policy = Policy {
     default: Action::Block,
-    rules: Vec::new(),
+    rules:   Vec::new(),
   };
   let scanner = Scanner::new(config.sysfs_root.clone());
   let mut state = State::new(config, policy);
@@ -561,10 +581,9 @@ fn manual_override_survives_late_descriptor_metadata() -> TestResult {
   state.refresh(&scanner)?;
   state.apply_override(1, Action::Allow)?;
   fs::write(device_dir.join("product"), "Late Metadata\n")?;
-  fs::write(
-    device_dir.join("descriptors"),
-    [9, 4, 0, 0, 1, 0x03, 0x01, 0x01, 0],
-  )?;
+  fs::write(device_dir.join("descriptors"), [
+    9, 4, 0, 0, 1, 0x03, 0x01, 0x01, 0,
+  ])?;
 
   let decisions = state.refresh(&scanner)?;
 

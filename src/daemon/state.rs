@@ -1,55 +1,79 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{
+  BTreeMap,
+  BTreeSet,
+};
 
-use tracing::{info, warn};
+use tracing::{
+  info,
+  warn,
+};
 
 use super::changes::{
-  collect_device_change_events, log_device_change,
-  log_explicit_device_decision, log_manual_override, log_override_cleared,
+  collect_device_change_events,
+  log_device_change,
+  log_explicit_device_decision,
+  log_manual_override,
+  log_override_cleared,
 };
 use crate::{
-  config::{Config, Mode},
+  config::{
+    Config,
+    Mode,
+  },
   device::DeviceState,
-  error::{Error, Result},
-  policy::{Action, Decision, Policy},
+  error::{
+    Error,
+    Result,
+  },
+  policy::{
+    Action,
+    Decision,
+    Policy,
+  },
   sysfs::{
-    ControllerAuthorizationState, EnforcementOutcome, Scanner, UsbDevice,
-    apply_authorization, force_authorization, preview_authorization,
+    ControllerAuthorizationState,
+    EnforcementOutcome,
+    Scanner,
+    UsbDevice,
+    apply_authorization,
+    force_authorization,
+    preview_authorization,
   },
 };
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) struct DeviceKey {
   sysfs_path: String,
-  vendor_id: String,
+  vendor_id:  String,
   product_id: String,
-  serial: Option<String>,
+  serial:     Option<String>,
 }
 
 impl From<&UsbDevice> for DeviceKey {
   fn from(device: &UsbDevice) -> Self {
     Self {
       sysfs_path: device.sysfs_path.to_string_lossy().into_owned(),
-      vendor_id: device.vendor_id.clone(),
+      vendor_id:  device.vendor_id.clone(),
       product_id: device.product_id.clone(),
-      serial: device.serial.clone(),
+      serial:     device.serial.clone(),
     }
   }
 }
 
 pub(super) struct State {
-  pub(super) config: Config,
-  policy: Policy,
-  pub(super) devices: Vec<DeviceState>,
-  pub(super) overrides: BTreeMap<DeviceKey, Action>,
-  ids_by_key: BTreeMap<DeviceKey, u32>,
-  next_id: u32,
+  pub(super) config:             Config,
+  policy:                        Policy,
+  pub(super) devices:            Vec<DeviceState>,
+  pub(super) overrides:          BTreeMap<DeviceKey, Action>,
+  ids_by_key:                    BTreeMap<DeviceKey, u32>,
+  next_id:                       u32,
   pub(super) controller_restore: Vec<ControllerAuthorizationState>,
 }
 
 struct RefreshSnapshot {
-  devices: Vec<DeviceState>,
+  devices:    Vec<DeviceState>,
   ids_by_key: BTreeMap<DeviceKey, u32>,
-  next_id: u32,
+  next_id:    u32,
 }
 
 impl State {
@@ -106,9 +130,9 @@ impl State {
     if let Some(action) = self.overrides.get(&key) {
       return Decision {
         device_id: device.id,
-        action: *action,
-        reason: "manual override".to_string(),
-        rule: None,
+        action:    *action,
+        reason:    "manual override".to_string(),
+        rule:      None,
       };
     }
 

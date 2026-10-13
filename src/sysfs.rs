@@ -2,55 +2,73 @@ use std::{
   collections::BTreeMap,
   fs,
   io::Write,
-  path::{Path, PathBuf},
+  path::{
+    Path,
+    PathBuf,
+  },
 };
 
-use base64::{Engine, engine::general_purpose::STANDARD};
+use base64::{
+  Engine,
+  engine::general_purpose::STANDARD,
+};
 use nix::errno::Errno;
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
-use tracing::{info, warn};
+use serde::{
+  Deserialize,
+  Serialize,
+};
+use sha2::{
+  Digest,
+  Sha256,
+};
+use tracing::{
+  info,
+  warn,
+};
 
 use crate::{
   config::AuthorizedDefault,
-  error::{Error, Result},
+  error::{
+    Error,
+    Result,
+  },
   policy::Action,
 };
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct UsbDevice {
-  pub id: u32,
-  pub sysfs_path: PathBuf,
-  pub port_path: String,
-  pub vendor_id: String,
-  pub product_id: String,
-  pub product_name: Option<String>,
-  pub serial: Option<String>,
-  pub connect_type: Option<String>,
-  pub authorized: Option<bool>,
+  pub id:              u32,
+  pub sysfs_path:      PathBuf,
+  pub port_path:       String,
+  pub vendor_id:       String,
+  pub product_id:      String,
+  pub product_name:    Option<String>,
+  pub serial:          Option<String>,
+  pub connect_type:    Option<String>,
+  pub authorized:      Option<bool>,
   pub descriptor_hash: Option<String>,
-  pub interfaces: Vec<String>,
-  pub is_hub: bool,
+  pub interfaces:      Vec<String>,
+  pub is_hub:          bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct ControllerAuthorizationUpdate {
   pub controller: String,
-  pub current: Option<String>,
-  pub desired: String,
+  pub current:    Option<String>,
+  pub desired:    String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ControllerAuthorizationState {
-  pub controller: String,
+  pub controller:         String,
   pub authorized_default: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct ControllerAuthorization {
   controller: String,
-  path: PathBuf,
-  current: String,
+  path:       PathBuf,
+  current:    String,
 }
 
 #[derive(Clone, Debug)]
@@ -123,9 +141,11 @@ impl Scanner {
       self
         .controller_authorizations()?
         .into_iter()
-        .map(|authorization| ControllerAuthorizationState {
-          controller: authorization.controller,
-          authorized_default: authorization.current,
+        .map(|authorization| {
+          ControllerAuthorizationState {
+            controller:         authorization.controller,
+            authorized_default: authorization.current,
+          }
         })
         .collect(),
     )
@@ -220,8 +240,8 @@ impl Scanner {
       })?;
       updates.push(ControllerAuthorizationUpdate {
         controller: state.controller.clone(),
-        current: Some(current),
-        desired: state.authorized_default.clone(),
+        current:    Some(current),
+        desired:    state.authorized_default.clone(),
       });
     }
 
@@ -282,10 +302,12 @@ impl Scanner {
       serial: read_trimmed_optional(path.join("serial"))?,
       connect_type: read_trimmed_optional(path.join("port/connect_type"))?,
       authorized: read_trimmed_optional(path.join("authorized"))?.and_then(
-        |value| match value.as_str() {
-          "0" => Some(false),
-          "1" => Some(true),
-          _ => None,
+        |value| {
+          match value.as_str() {
+            "0" => Some(false),
+            "1" => Some(true),
+            _ => None,
+          }
         },
       ),
       descriptor_hash,
@@ -299,10 +321,12 @@ fn controller_update(
   authorization: ControllerAuthorization,
   desired: &str,
 ) -> Option<ControllerAuthorizationUpdate> {
-  (authorization.current != desired).then(|| ControllerAuthorizationUpdate {
-    controller: authorization.controller,
-    current: Some(authorization.current),
-    desired: desired.to_string(),
+  (authorization.current != desired).then(|| {
+    ControllerAuthorizationUpdate {
+      controller: authorization.controller,
+      current:    Some(authorization.current),
+      desired:    desired.to_string(),
+    }
   })
 }
 
@@ -416,10 +440,12 @@ fn read_optional(path: impl AsRef<Path>) -> Result<Option<String>> {
   match fs::read_to_string(path) {
     Ok(contents) => Ok(Some(contents)),
     Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-    Err(error) => Err(Error::io(
-      format!("failed to read {}", path.display()),
-      error,
-    )),
+    Err(error) => {
+      Err(Error::io(
+        format!("failed to read {}", path.display()),
+        error,
+      ))
+    },
   }
 }
 
@@ -480,10 +506,10 @@ mod tests {
       9, 4, 0, 0, 1, 0x03, 0x01, 0x01, 0, 9, 4, 1, 0, 1, 0x08, 0x06, 0x50, 0,
     ];
 
-    assert_eq!(
-      parse_interfaces(&descriptors),
-      vec!["03:01:01".to_string(), "08:06:50".to_string()]
-    );
+    assert_eq!(parse_interfaces(&descriptors), vec![
+      "03:01:01".to_string(),
+      "08:06:50".to_string()
+    ]);
   }
 
   #[test]
@@ -505,10 +531,9 @@ mod tests {
     fs::write(device_dir.join("serial"), "abc123\n")?;
     fs::write(device_dir.join("authorized"), "1\n")?;
     fs::write(device_dir.join("port/connect_type"), "hardwired\n")?;
-    fs::write(
-      device_dir.join("descriptors"),
-      [9, 4, 0, 0, 1, 0x03, 0x01, 0x01, 0],
-    )?;
+    fs::write(device_dir.join("descriptors"), [
+      9, 4, 0, 0, 1, 0x03, 0x01, 0x01, 0,
+    ])?;
 
     let devices = Scanner::new(root.path()).scan()?;
 
@@ -555,14 +580,11 @@ mod tests {
     let updates =
       scanner.controller_authorization_updates(AuthorizedDefault::None)?;
 
-    assert_eq!(
-      updates,
-      vec![ControllerAuthorizationUpdate {
-        controller: "usb1".to_string(),
-        current: Some("1".to_string()),
-        desired: "0".to_string(),
-      }]
-    );
+    assert_eq!(updates, vec![ControllerAuthorizationUpdate {
+      controller: "usb1".to_string(),
+      current:    Some("1".to_string()),
+      desired:    "0".to_string(),
+    }]);
     assert!(
       scanner
         .controller_authorization_updates(AuthorizedDefault::Keep)?
@@ -637,14 +659,11 @@ mod tests {
     scanner.apply_controller_authorized_default(AuthorizedDefault::None)?;
     let updates = scanner.restore_controller_authorized_defaults(&states)?;
 
-    assert_eq!(
-      updates,
-      vec![ControllerAuthorizationUpdate {
-        controller: "usb1".to_string(),
-        current: Some("0".to_string()),
-        desired: "1".to_string(),
-      }]
-    );
+    assert_eq!(updates, vec![ControllerAuthorizationUpdate {
+      controller: "usb1".to_string(),
+      current:    Some("0".to_string()),
+      desired:    "1".to_string(),
+    }]);
     assert_eq!(
       fs::read_to_string(root_hub_dir.join("authorized_default"))?,
       "1"

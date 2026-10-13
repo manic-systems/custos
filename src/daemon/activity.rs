@@ -1,22 +1,33 @@
 use std::{
   io,
   os::{
-    fd::{AsFd, BorrowedFd},
+    fd::{
+      AsFd,
+      BorrowedFd,
+    },
     unix::net::UnixListener,
   },
 };
 
 use nix::{
   errno::Errno,
-  poll::{PollFd, PollFlags, PollTimeout, poll},
+  poll::{
+    PollFd,
+    PollFlags,
+    PollTimeout,
+    poll,
+  },
 };
 
-use crate::error::{Error, Result};
+use crate::error::{
+  Error,
+  Result,
+};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) struct Activity {
-  pub(super) shutdown: bool,
-  pub(super) control: bool,
+  pub(super) shutdown:  bool,
+  pub(super) control:   bool,
   pub(super) usb_event: bool,
 }
 
@@ -49,8 +60,8 @@ pub(super) fn wait_for_activity(
   }
 
   Ok(Activity {
-    shutdown: poll_in(&fds[2]),
-    control: poll_in(&fds[0]),
+    shutdown:  poll_in(&fds[2]),
+    control:   poll_in(&fds[0]),
     usb_event: poll_in(&fds[1]),
   })
 }

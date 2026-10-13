@@ -1,9 +1,16 @@
 use std::{
   fs,
-  io::{BufRead, BufReader, Write},
+  io::{
+    BufRead,
+    BufReader,
+    Write,
+  },
   os::unix::{
     fs::PermissionsExt,
-    net::{UnixListener, UnixStream},
+    net::{
+      UnixListener,
+      UnixStream,
+    },
   },
   path::Path,
   time::Duration,
@@ -11,8 +18,14 @@ use std::{
 
 use super::state::State;
 use crate::{
-  control::{Request, Response},
-  error::{Error, Result},
+  control::{
+    Request,
+    Response,
+  },
+  error::{
+    Error,
+    Result,
+  },
   sysfs::Scanner,
 };
 
@@ -76,10 +89,12 @@ pub(super) fn cleanup_control_socket(path: &Path) -> Result<()> {
   match fs::remove_file(path) {
     Ok(()) => Ok(()),
     Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-    Err(error) => Err(Error::io(
-      format!("failed to remove control socket {}", path.display()),
-      error,
-    )),
+    Err(error) => {
+      Err(Error::io(
+        format!("failed to remove control socket {}", path.display()),
+        error,
+      ))
+    },
   }
 }
 
@@ -90,11 +105,15 @@ pub(super) fn handle_client(
 ) -> Result<()> {
   configure_client_stream(&stream)?;
   let response = match read_request(&stream)? {
-    Ok(request) => match handle_request(&request, scanner, state) {
-      Ok(response) => response,
-      Err(error) => Response::Error {
-        message: error.to_string(),
-      },
+    Ok(request) => {
+      match handle_request(&request, scanner, state) {
+        Ok(response) => response,
+        Err(error) => {
+          Response::Error {
+            message: error.to_string(),
+          }
+        },
+      }
     },
     Err(message) => Response::Error { message },
   };
@@ -162,22 +181,28 @@ fn handle_request(
   state: &mut State,
 ) -> Result<Response> {
   let response = match request {
-    Request::Status => Response::Status {
-      mode: state.config.mode,
-      device_count: state.devices.len(),
-      override_count: state.overrides.len(),
-      socket_path: state.config.socket_path.display().to_string(),
-      policy_path: state.config.policy_path.display().to_string(),
+    Request::Status => {
+      Response::Status {
+        mode:           state.config.mode,
+        device_count:   state.devices.len(),
+        override_count: state.overrides.len(),
+        socket_path:    state.config.socket_path.display().to_string(),
+        policy_path:    state.config.policy_path.display().to_string(),
+      }
     },
     Request::ListDevices => {
       let devices = state.devices.clone();
       Response::Devices { devices }
     },
-    Request::DryRunReload => Response::Decisions {
-      decisions: state.dry_run_reload(scanner)?,
+    Request::DryRunReload => {
+      Response::Decisions {
+        decisions: state.dry_run_reload(scanner)?,
+      }
     },
-    Request::Reload => Response::Decisions {
-      decisions: state.reload(scanner)?,
+    Request::Reload => {
+      Response::Decisions {
+        decisions: state.reload(scanner)?,
+      }
     },
     Request::Apply { id, action } => {
       state.apply_override(*id, *action)?;
@@ -217,7 +242,10 @@ mod tests {
   use std::{
     error::Error as StdError,
     os::unix::net::UnixStream,
-    time::{Duration, Instant},
+    time::{
+      Duration,
+      Instant,
+    },
   };
 
   use super::*;

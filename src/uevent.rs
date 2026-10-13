@@ -1,32 +1,47 @@
 use std::{
   io,
-  os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd},
+  os::fd::{
+    AsFd,
+    AsRawFd,
+    BorrowedFd,
+    OwnedFd,
+  },
 };
 
 use nix::{
   errno::Errno,
   sys::socket::{
-    AddressFamily, MsgFlags, NetlinkAddr, SockFlag, SockProtocol, SockType,
-    bind, recv, socket,
+    AddressFamily,
+    MsgFlags,
+    NetlinkAddr,
+    SockFlag,
+    SockProtocol,
+    SockType,
+    bind,
+    recv,
+    socket,
   },
 };
 
-use crate::error::{Error, Result};
+use crate::error::{
+  Error,
+  Result,
+};
 
 const BUFFER_SIZE: usize = 16 * 1024;
 
 #[derive(Debug)]
 pub struct UsbEventMonitor {
-  fd: OwnedFd,
+  fd:     OwnedFd,
   buffer: [u8; BUFFER_SIZE],
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct Uevent {
-  header: String,
-  action: Option<String>,
+  header:    String,
+  action:    Option<String>,
   subsystem: Option<String>,
-  devtype: Option<String>,
+  devtype:   Option<String>,
 }
 
 impl UsbEventMonitor {
@@ -108,10 +123,10 @@ impl Uevent {
       .filter(|part| !part.is_empty())
       .filter_map(|part| std::str::from_utf8(part).ok());
     let mut event = Self {
-      header: String::new(),
-      action: None,
+      header:    String::new(),
+      action:    None,
       subsystem: None,
-      devtype: None,
+      devtype:   None,
     };
 
     for (index, part) in parts.enumerate() {
