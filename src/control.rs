@@ -26,6 +26,8 @@ use crate::{
   },
 };
 
+pub const MAX_CONTROL_FRAME: usize = 64 * 1024;
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "command", rename_all = "kebab-case")]
 pub enum Request {
@@ -62,16 +64,22 @@ pub enum Response {
 }
 
 pub fn send_request(socket_path: &Path, request: &Request) -> Result<Response> {
+  let mut payload = serde_json::to_vec(request).map_err(|error| {
+    Error::Protocol(format!("failed to encode request: {error}"))
+  })?;
+  payload.push(b'\n');
+  if payload.len() > MAX_CONTROL_FRAME {
+    return Err(Error::Protocol(format!(
+      "control request exceeds {MAX_CONTROL_FRAME} bytes"
+    )));
+  }
+
   let mut stream = UnixStream::connect(socket_path).map_err(|error| {
     Error::io(
       format!("failed to connect to {}", socket_path.display()),
       error,
     )
   })?;
-  let mut payload = serde_json::to_vec(request).map_err(|error| {
-    Error::Protocol(format!("failed to encode request: {error}"))
-  })?;
-  payload.push(b'\n');
   stream
     .write_all(&payload)
     .map_err(|error| Error::io("failed to write control request", error))?;

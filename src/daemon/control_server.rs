@@ -19,6 +19,7 @@ use std::{
 use super::state::State;
 use crate::{
   control::{
+    MAX_CONTROL_FRAME,
     Request,
     Response,
   },
@@ -29,7 +30,6 @@ use crate::{
   sysfs::Scanner,
 };
 
-const MAX_CONTROL_FRAME: usize = 64 * 1024;
 const CONTROL_IO_TIMEOUT: Duration = Duration::from_secs(1);
 
 pub(super) fn bind_control_socket(path: &Path) -> Result<UnixListener> {
@@ -104,7 +104,10 @@ pub(super) fn handle_client(
   state: &mut State,
 ) -> Result<()> {
   configure_client_stream(&stream)?;
-  let response = match read_request(&stream)? {
+  let mut reader = BufReader::new(stream.try_clone().map_err(|error| {
+    Error::io("failed to clone control stream for reading", error)
+  })?);
+  let response = match read_request(&mut reader)? {
     Ok(request) => {
       match handle_request(&request, scanner, state) {
         Ok(response) => response,
@@ -135,11 +138,8 @@ fn configure_client_stream(stream: &UnixStream) -> Result<()> {
 }
 
 fn read_request(
-  stream: &UnixStream,
+  reader: &mut impl BufRead,
 ) -> Result<std::result::Result<Request, String>> {
-  let mut reader = BufReader::new(stream.try_clone().map_err(|error| {
-    Error::io("failed to clone control stream for reading", error)
-  })?);
   let mut payload = Vec::new();
 
   loop {
@@ -241,6 +241,7 @@ fn write_response(mut stream: UnixStream, response: &Response) -> Result<()> {
 mod tests {
   use std::{
     error::Error as StdError,
+    io::Cursor,
     os::unix::net::UnixStream,
     time::{
       Duration,
@@ -259,10 +260,22 @@ mod tests {
     server.set_read_timeout(Some(Duration::from_millis(10)))?;
 
     let start = Instant::now();
-    let result = read_request(&server);
+    let result = read_request(&mut BufReader::new(&server));
 
     assert!(result.is_err());
     assert!(start.elapsed() < Duration::from_secs(1));
+    Ok(())
+  }
+
+  #[test]
+  fn oversized_control_request_is_rejected() -> TestResult {
+    let mut request = vec![b' '; MAX_CONTROL_FRAME + 1];
+    request.push(b'\n');
+    let Err(message) = read_request(&mut Cursor::new(request))? else {
+      return Err("oversized control request was accepted".into());
+    };
+
+    assert!(message.contains("control request exceeds"));
     Ok(())
   }
 }
