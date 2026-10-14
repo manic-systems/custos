@@ -20,6 +20,10 @@ use crate::{
     Config,
     Mode,
   },
+  control::{
+    DeviceEvent,
+    DeviceEventKind,
+  },
   device::DeviceState,
   error::{
     Error,
@@ -68,6 +72,7 @@ pub(super) struct State {
   ids_by_key:                    BTreeMap<DeviceKey, u32>,
   next_id:                       u32,
   pub(super) controller_restore: Vec<ControllerAuthorizationState>,
+  events:                        Vec<DeviceEvent>,
 }
 
 struct RefreshSnapshot {
@@ -86,7 +91,12 @@ impl State {
       ids_by_key: BTreeMap::new(),
       next_id: 1,
       controller_restore: Vec::new(),
+      events: Vec::new(),
     }
+  }
+
+  pub(super) fn take_events(&mut self) -> Vec<DeviceEvent> {
+    std::mem::take(&mut self.events)
   }
 
   #[cfg(test)]
@@ -146,6 +156,7 @@ impl State {
   ) -> Result<Decision> {
     let state = self.device_by_id(id)?;
     let device = state.device.clone();
+    let previous_action = state.decision.action;
     let key = DeviceKey::from(&device);
     let decision = Decision {
       device_id: device.id,
@@ -163,6 +174,7 @@ impl State {
     self.record_device_decision(id, decision.clone());
     log_manual_override(&device, &decision);
     self.overrides.insert(key, action);
+    self.record_decision_change(id, previous_action);
 
     Ok(decision)
   }
@@ -171,7 +183,7 @@ impl State {
     let state = self.device_by_id(id)?;
     let device = state.device.clone();
     let key = DeviceKey::from(&device);
-    let previous_action = Some(state.decision.action);
+    let previous_action = state.decision.action;
 
     let decision = self.policy.decide(&device);
     if self.apply_device_authorization(&device, decision.action, true)?
@@ -185,6 +197,7 @@ impl State {
     self.record_device_decision(id, decision.clone());
     self.overrides.remove(&key);
     log_override_cleared(&device, previous_action, &decision);
+    self.record_decision_change(id, previous_action);
 
     Ok(decision)
   }
@@ -352,6 +365,7 @@ impl State {
     {
       log_device_change(&event);
       log_explicit_device_decision(&event);
+      self.events.push(event);
     }
 
     let current_keys: BTreeSet<DeviceKey> = snapshot
@@ -392,6 +406,18 @@ impl State {
       force_authorization(device, action)
     } else {
       apply_authorization(device, action)
+    }
+  }
+
+  fn record_decision_change(&mut self, id: u32, previous_action: Action) {
+    if let Some(state) = self.devices.iter().find(|state| state.device.id == id)
+      && state.decision.action != previous_action
+    {
+      self.events.push(DeviceEvent::new(
+        DeviceEventKind::DecisionChanged,
+        state,
+        Some(previous_action),
+      ));
     }
   }
 

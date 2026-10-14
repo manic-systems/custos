@@ -5,13 +5,17 @@ mod state;
 
 #[cfg(test)] mod tests;
 
-use std::path::PathBuf;
+use std::{
+  os::unix::net::UnixStream,
+  path::PathBuf,
+};
 
 use activity::wait_for_activity;
 use control_server::{
   bind_control_socket,
   cleanup_control_socket,
   handle_client,
+  publish_events,
 };
 use tracing::{
   info,
@@ -53,14 +57,21 @@ pub fn run_daemon(config: Config, policy: Policy) -> Result<()> {
   let mut event_monitor = UsbEventMonitor::open()?;
   info!("listening for USB kernel uevents");
   state.refresh(&scanner)?;
+  state.take_events();
   let shutdown_signal = ShutdownSignal::install()?;
+  let mut subscribers: Vec<UnixStream> = Vec::new();
 
   loop {
     let activity = wait_for_activity(
       &listener,
       event_monitor.as_fd(),
       shutdown_signal.as_fd(),
+      &subscribers,
     )?;
+
+    for index in activity.closed_subscribers.iter().rev() {
+      subscribers.swap_remove(*index);
+    }
 
     if activity.shutdown && shutdown_signal.drain()? {
       info!("shutdown signal received");
@@ -80,8 +91,10 @@ pub fn run_daemon(config: Config, policy: Policy) -> Result<()> {
           },
         };
 
-        if let Err(error) = handle_client(stream, &scanner, &mut state) {
-          warn!(error = %error, "control request failed");
+        match handle_client(stream, &scanner, &mut state) {
+          Ok(Some(subscriber)) => subscribers.push(subscriber),
+          Ok(None) => {},
+          Err(error) => warn!(error = %error, "control request failed"),
         }
       }
     }
@@ -99,6 +112,8 @@ pub fn run_daemon(config: Config, policy: Policy) -> Result<()> {
         },
       }
     }
+
+    publish_events(&mut subscribers, &state.take_events());
   }
 }
 
