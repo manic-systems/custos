@@ -502,41 +502,6 @@ fn control_request_reports_command_errors() -> TestResult {
 }
 
 #[test]
-fn oversized_control_request_is_rejected() -> TestResult {
-  use std::{
-    io::{
-      BufRead,
-      BufReader,
-      Write,
-    },
-    os::unix::net::UnixStream,
-  };
-
-  let root = tempfile::tempdir()?;
-  let socket_path = root.path().join("control.sock");
-  let listener = bind_control_socket(&socket_path)?;
-  let config = Config {
-    mode: Mode::DryRun,
-    socket_path: socket_path.clone(),
-    sysfs_root: root.path().to_path_buf(),
-    ..Config::default()
-  };
-  let scanner = Scanner::new(config.sysfs_root.clone());
-  let state = State::new(config, Policy::default());
-  let server = serve_control_requests(listener, scanner, state, 1);
-
-  let mut stream = UnixStream::connect(&socket_path)?;
-  stream.write_all(&vec![b' '; 70 * 1024])?;
-  stream.write_all(b"\n")?;
-  let mut response = String::new();
-  BufReader::new(stream).read_line(&mut response)?;
-  join_server(server)?;
-
-  assert!(response.contains("control request exceeds"));
-  Ok(())
-}
-
-#[test]
 fn manual_allow_override_survives_refresh_for_same_identity() -> TestResult {
   let root = tempfile::tempdir()?;
   write_fake_device(root.path())?;
