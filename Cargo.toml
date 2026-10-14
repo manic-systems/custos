@@ -15,9 +15,13 @@ serde_json = "1"
 thiserror = "2"
 toml = "1.1.2"
 tracing = { version = "0.1", default-features = false, features = ["std"] }
-tracing-subscriber = { version = "0.3", default-features = false, features = [
-  "fmt",
-] }
+tracing-subscriber = {
+	version = "0.3",
+	default-features = false,
+	features = [
+		"fmt",
+	],
+}
 
 [dev-dependencies]
 tempfile = "3"
@@ -53,6 +57,8 @@ unimplemented = "warn"
 unreachable = "warn"
 
 [profile.release]
-strip = true
-lto = "fat"
 codegen-units = 1
+lto = "thin"
+opt-level = "s"
+panic = "abort"
+strip = "symbols"
