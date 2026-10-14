@@ -8,6 +8,7 @@
   rustPlatform,
   cargo,
   rustfmt,
+  dbus,
 }:
 mkShell {
   packages = [
@@ -19,5 +20,6 @@ mkShell {
     tombi
     cargo
   ];
+  buildInputs = [ dbus ];
   env.RUST_SRC_PATH = rustPlatform.rustLibSrc;
 }

@@ -6,7 +6,10 @@ use std::{
       AsRawFd,
       BorrowedFd,
     },
-    unix::net::UnixListener,
+    unix::net::{
+      UnixListener,
+      UnixStream,
+    },
   },
 };
 
@@ -15,23 +18,30 @@ use crate::error::{
   Result,
 };
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct Activity {
-  pub(super) shutdown:  bool,
-  pub(super) control:   bool,
-  pub(super) usb_event: bool,
+  pub(super) shutdown:           bool,
+  pub(super) control:            bool,
+  pub(super) usb_event:          bool,
+  pub(super) closed_subscribers: Vec<usize>,
 }
 
 pub(super) fn wait_for_activity(
   listener: &UnixListener,
   event_fd: BorrowedFd<'_>,
   shutdown_fd: BorrowedFd<'_>,
+  subscribers: &[UnixStream],
 ) -> Result<Activity> {
-  let mut fds = [
+  let mut fds = vec![
     poll_fd(listener.as_fd()),
     poll_fd(event_fd),
     poll_fd(shutdown_fd),
   ];
+  fds.extend(
+    subscribers
+      .iter()
+      .map(|subscriber| poll_fd(subscriber.as_fd())),
+  );
 
   let rc = loop {
     // SAFETY: the pointer and count describe `fds`, which is exclusively
@@ -52,10 +62,20 @@ pub(super) fn wait_for_activity(
     return Ok(Activity::default());
   }
 
+  // A subscriber only ever reads, so any readiness on its socket is a hangup,
+  // an error, or a protocol violation, and each one ends the subscription.
+  let closed_subscribers = fds[3..]
+    .iter()
+    .enumerate()
+    .filter(|(_index, fd)| fd.revents != 0)
+    .map(|(index, _fd)| index)
+    .collect();
+
   Ok(Activity {
-    shutdown:  poll_in(fds[2]),
-    control:   poll_in(fds[0]),
+    shutdown: poll_in(fds[2]),
+    control: poll_in(fds[0]),
     usb_event: poll_in(fds[1]),
+    closed_subscribers,
   })
 }
 

@@ -3,6 +3,7 @@ mod control;
 mod daemon;
 mod device;
 mod error;
+mod notify;
 mod policy;
 mod signal;
 mod sysfs;
@@ -45,6 +46,7 @@ use crate::{
     Error,
     Result,
   },
+  notify::run_notifier,
   policy::{
     Action,
     Policy,
@@ -143,6 +145,12 @@ enum Command {
     #[pound(flatten)]
     args: StartupArgs,
   },
+  /// Show desktop notifications for USB authorization decisions.
+  Notify {
+    /// Control socket path.
+    #[pound(long, value_name = "PATH", default = { DEFAULT_SOCKET_PATH })]
+    socket: PathBuf,
+  },
   /// Generate an initial allow policy from currently connected devices.
   GeneratePolicy {
     /// sysfs root to scan.
@@ -214,6 +222,7 @@ fn run(command: Command) -> Result<()> {
     },
     Command::DryRun { args } => dry_run(&args),
     Command::Validate { args } => validate(&args),
+    Command::Notify { socket } => run_notifier(&socket),
     Command::GeneratePolicy { sysfs_root } => generate(sysfs_root),
   }
 }

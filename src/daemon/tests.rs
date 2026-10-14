@@ -10,7 +10,6 @@ use std::{
 
 use super::{
   changes::{
-    DeviceChangeKind,
     ExplicitDecisionSource,
     collect_device_change_events,
     explicit_decision_source,
@@ -27,6 +26,7 @@ use crate::{
     Mode,
   },
   control::{
+    DeviceEventKind,
     Request,
     Response,
     send_request,
@@ -247,7 +247,7 @@ fn reports_connected_device_with_decision() {
   let events = collect_device_change_events(&[], &[device]);
 
   assert_eq!(events.len(), 1);
-  assert_eq!(events[0].kind, DeviceChangeKind::Connected);
+  assert_eq!(events[0].kind, DeviceEventKind::Connected);
   assert_eq!(events[0].action, Action::Allow);
   assert_eq!(events[0].rule.as_deref(), Some("trusted device"));
   assert_eq!(
@@ -266,7 +266,7 @@ fn reports_removed_device_with_last_decision() {
   let events = collect_device_change_events(&[device], &[]);
 
   assert_eq!(events.len(), 1);
-  assert_eq!(events[0].kind, DeviceChangeKind::Removed);
+  assert_eq!(events[0].kind, DeviceEventKind::Removed);
   assert_eq!(events[0].action, Action::Block);
 }
 
@@ -287,8 +287,8 @@ fn reports_same_path_identity_change_as_remove_and_connect() {
   let events = collect_device_change_events(&[previous], &[current]);
 
   assert_eq!(events.len(), 2);
-  assert_eq!(events[0].kind, DeviceChangeKind::Connected);
-  assert_eq!(events[1].kind, DeviceChangeKind::Removed);
+  assert_eq!(events[0].kind, DeviceEventKind::Connected);
+  assert_eq!(events[1].kind, DeviceEventKind::Removed);
 }
 
 #[test]
@@ -299,7 +299,7 @@ fn reports_existing_device_decision_change() {
   let events = collect_device_change_events(&[previous], &[current]);
 
   assert_eq!(events.len(), 1);
-  assert_eq!(events[0].kind, DeviceChangeKind::DecisionChanged);
+  assert_eq!(events[0].kind, DeviceEventKind::DecisionChanged);
   assert_eq!(events[0].previous_action, Some(Action::Block));
   assert_eq!(events[0].action, Action::Allow);
 }
