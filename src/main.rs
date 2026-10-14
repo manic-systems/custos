@@ -22,6 +22,12 @@ use clap::{
   Subcommand,
 };
 use serde::Serialize;
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber::{
+  filter::Targets,
+  layer::SubscriberExt,
+  util::SubscriberInitExt,
+};
 
 use crate::{
   config::{
@@ -53,11 +59,18 @@ use crate::{
 };
 
 fn main() {
-  let env_filter = match tracing_subscriber::EnvFilter::try_from_default_env() {
-    Ok(filter) => filter,
-    Err(_error) => tracing_subscriber::EnvFilter::new("warn,custos=info"),
-  };
-  tracing_subscriber::fmt().with_env_filter(env_filter).init();
+  let targets = std::env::var("RUST_LOG")
+    .ok()
+    .and_then(|filter| filter.parse::<Targets>().ok())
+    .unwrap_or_else(|| {
+      Targets::new()
+        .with_default(LevelFilter::WARN)
+        .with_target("custos", LevelFilter::INFO)
+    });
+  tracing_subscriber::registry()
+    .with(tracing_subscriber::fmt::layer())
+    .with(targets)
+    .init();
 
   if let Err(error) = run(std::env::args().collect()) {
     eprintln!("custos: {error}");
