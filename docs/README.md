@@ -95,7 +95,7 @@ The module:
 - Adds `services.custos.controlUsers` to that group.
 - Creates the control socket directory with mode `2770`.
 - Starts `systemd.services.custos` with
-  `custos --daemon --config /etc/custos/config.toml`.
+  `custos daemon --config /etc/custos/config.toml`.
 - Grants the service write access to the socket directory and the configured USB
   sysfs devices directory.
 
@@ -128,20 +128,17 @@ are handled by `custos validate` and daemon startup:
 ### Daemon
 
 ```sh
-custos --daemon
-custos --daemon --config /etc/custos/config.toml
-custos --daemon --dry-run
-custos --daemon --unsafe-empty-policy
+custos daemon
+custos daemon --config /etc/custos/config.toml
+custos daemon --dry-run
+custos daemon --unsafe-empty-policy
 ```
 
 Daemon flags:
 
-- `--daemon` starts enforcement.
 - `--config PATH` selects the daemon config file.
 - `--dry-run` overrides the loaded config mode to `dry-run`.
 - `--unsafe-empty-policy` permits startup without an endpoint allow policy.
-
-`--daemon` cannot be combined with subcommands or `--json`.
 
 ### Daemon-Backed CLI
 
@@ -401,13 +398,13 @@ The workflow for getting this project up and running is approximately:
 3. Create a `config.toml` that points `policy_path` at the reviewed policy.
 4. Run `custos validate --config ./config.toml`.
 5. Run `custos dry-run --config ./config.toml`.
-6. Enable the NixOS module or start `custos --daemon --config ./config.toml` as
+6. Enable the NixOS module or start `custos daemon --config ./config.toml` as
    superuser.
 
 To intentionally test without a policy:
 
 ```sh
-custos --daemon --dry-run --unsafe-empty-policy
+custos daemon --dry-run --unsafe-empty-policy
 ```
 
 Avoid enforcing an empty or unreviewed policy unless you have another way back
