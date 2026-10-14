@@ -43,6 +43,9 @@ The module lives in [`nix/module.nix`](../nix/module.nix) and can be used to set
     # Users which are allowed to control the daemon.
     controlUsers = [ "alice" ];
 
+    # Notify control users about allowed and blocked devices.
+    notifications.enable = true;
+
     config = {
       # Enforce the policies in the policy list.
       mode = "enforce";
@@ -98,20 +101,24 @@ The module:
   `custos daemon --config /etc/custos/config.toml`.
 - Grants the service write access to the socket directory and the configured USB
   sysfs devices directory.
+- With `services.custos.notifications.enable`, starts
+  `systemd.user.services.custos-notify` in the graphical session of every user
+  in the control group.
 
 The socket itself is created by the daemon with mode `0660`. Users in the
 configured control group can run daemon-backed CLI commands without root.
 
 ### Module Options
 
-| Option                         | Default                      | Meaning                                                |
-| ------------------------------ | ---------------------------- | ------------------------------------------------------ |
-| `services.custos.enable`       | `false`                      | Enable the daemon and generated files.                 |
-| `services.custos.package`      | flake package                | Package to run.                                        |
-| `services.custos.config`       | daemon defaults              | Raw TOML attrset written to `/etc/custos/config.toml`. |
-| `services.custos.policy`       | `{ default = "block"; ... }` | Raw TOML attrset written to `/etc/custos/policy.toml`. |
-| `services.custos.group`        | `"custos"`                   | Group that owns the control socket directory.          |
-| `services.custos.controlUsers` | `[ ]`                        | Users added to the control group.                      |
+| Option                                 | Default                      | Meaning                                                |
+| -------------------------------------- | ---------------------------- | ------------------------------------------------------ |
+| `services.custos.enable`               | `false`                      | Enable the daemon and generated files.                 |
+| `services.custos.package`              | flake package                | Package to run.                                        |
+| `services.custos.config`               | daemon defaults              | Raw TOML attrset written to `/etc/custos/config.toml`. |
+| `services.custos.policy`               | `{ default = "block"; ... }` | Raw TOML attrset written to `/etc/custos/policy.toml`. |
+| `services.custos.group`                | `"custos"`                   | Group that owns the control socket directory.          |
+| `services.custos.controlUsers`         | `[ ]`                        | Users added to the control group.                      |
+| `services.custos.notifications.enable` | `false`                      | Run `custos notify` in control users' sessions.        |
 
 The module does not try to semantically validate policies at evaluation time.
 It only renders Nix attrsets to TOML; lockout checks and empty-matcher checks
@@ -184,6 +191,18 @@ disappears during a write, or if something outside Custos changes sysfs.
 Device IDs are daemon-local runtime IDs from `custos devices`. They are stable
 across refreshes for the same device identity, but they are not a persistent
 policy identifier.
+
+### Desktop Notifications
+
+```sh
+custos notify
+custos notify --socket /run/custos/control.sock
+```
+
+`notify` shows a desktop notification when a device connects or its decision
+changes. Blocked devices get an **Allow Once** action, which allows the device
+until it is removed. The user must be in the control group. The NixOS module
+runs it with `services.custos.notifications.enable`.
 
 ### Local Commands
 

@@ -1,10 +1,18 @@
 use std::{
   io::{
+    self,
     BufRead,
     BufReader,
+    Read,
     Write,
   },
-  os::unix::net::UnixStream,
+  os::{
+    fd::{
+      AsFd,
+      BorrowedFd,
+    },
+    unix::net::UnixStream,
+  },
   path::Path,
 };
 
@@ -97,6 +105,113 @@ impl DeviceEvent {
       reason: state.decision.reason.clone(),
       rule: state.decision.rule.clone(),
     }
+  }
+}
+
+pub struct EventStream {
+  stream: UnixStream,
+  buffer: Vec<u8>,
+}
+
+impl EventStream {
+  pub fn subscribe(socket_path: &Path) -> Result<Self> {
+    let payload = encode_request(&Request::Subscribe)?;
+    let mut stream = connect(socket_path)?;
+    stream
+      .write_all(&payload)
+      .map_err(|error| Error::io("failed to write control request", error))?;
+
+    let mut events = Self {
+      stream,
+      buffer: Vec::new(),
+    };
+    let line = loop {
+      if let Some(line) = events.take_line()? {
+        break line;
+      }
+      let length = events.fill().map_err(|error| {
+        Error::io("failed to read the subscription response", error)
+      })?;
+      if length == 0 {
+        return Err(Error::Protocol(
+          "daemon closed the connection before confirming the subscription"
+            .to_string(),
+        ));
+      }
+    };
+    match decode_response(&line)? {
+      Response::Ok { .. } => {},
+      Response::Error { message } => return Err(Error::Protocol(message)),
+      other => {
+        return Err(Error::Protocol(format!(
+          "unexpected subscription response: {other:?}"
+        )));
+      },
+    }
+
+    events.stream.set_nonblocking(true).map_err(|error| {
+      Error::io("failed to configure the event stream", error)
+    })?;
+    Ok(events)
+  }
+
+  pub fn as_fd(&self) -> BorrowedFd<'_> {
+    self.stream.as_fd()
+  }
+
+  pub fn read_events(&mut self) -> Result<Vec<DeviceEvent>> {
+    loop {
+      match self.fill() {
+        Ok(0) => {
+          return Err(Error::Protocol(
+            "daemon closed the event stream".to_string(),
+          ));
+        },
+        Ok(_length) => {},
+        Err(error) if error.kind() == io::ErrorKind::WouldBlock => break,
+        Err(error) => {
+          return Err(Error::io("failed to read the event stream", error));
+        },
+      }
+    }
+
+    let mut events = Vec::new();
+    while let Some(line) = self.take_line()? {
+      events.push(serde_json::from_slice(&line).map_err(|error| {
+        Error::Protocol(format!("failed to decode device event: {error}"))
+      })?);
+    }
+    Ok(events)
+  }
+
+  fn fill(&mut self) -> io::Result<usize> {
+    let mut chunk = [0; 4096];
+    loop {
+      match self.stream.read(&mut chunk) {
+        Ok(length) => {
+          self.buffer.extend_from_slice(&chunk[..length]);
+          return Ok(length);
+        },
+        Err(error) if error.kind() == io::ErrorKind::Interrupted => {},
+        Err(error) => return Err(error),
+      }
+    }
+  }
+
+  fn take_line(&mut self) -> Result<Option<Vec<u8>>> {
+    let Some(newline) = self.buffer.iter().position(|byte| *byte == b'\n')
+    else {
+      if self.buffer.len() > MAX_CONTROL_FRAME {
+        return Err(Error::Protocol(format!(
+          "device event exceeds {MAX_CONTROL_FRAME} bytes"
+        )));
+      }
+      return Ok(None);
+    };
+
+    let mut line: Vec<u8> = self.buffer.drain(..=newline).collect();
+    line.pop();
+    Ok(Some(line))
   }
 }
 

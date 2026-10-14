@@ -1,6 +1,8 @@
 {
   lib,
   rustPlatform,
+  pkg-config,
+  dbus,
 }:
 
 rustPlatform.buildRustPackage {
@@ -17,6 +19,9 @@ rustPlatform.buildRustPackage {
   };
 
   cargoLock.lockFile = ../Cargo.lock;
+
+  nativeBuildInputs = [ pkg-config ];
+  buildInputs = [ dbus ];
 
   meta = {
     description = "Sleek and simple USB authorization daemon";
