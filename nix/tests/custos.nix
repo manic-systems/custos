@@ -88,7 +88,7 @@ pkgs.testers.nixosTest {
       restore_on_shutdown = false
       EOF
       printf 'default = "block"\n' > /tmp/custos-empty-policy.toml
-      timeout 5s custos --daemon --config /tmp/custos-refuse.toml 2>&1 | grep -q 'refusing to enforce'
+      timeout 5s custos daemon --config /tmp/custos-refuse.toml 2>&1 | grep -q 'refusing to enforce'
     """))
 
     dry_run = json.loads(machine.succeed("custos dry-run --json --config /etc/custos/config.toml"))

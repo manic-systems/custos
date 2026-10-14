@@ -146,7 +146,7 @@ in
       serviceConfig = {
         Type = "simple";
         ExecStartPre = "${pkgs.coreutils}/bin/install -d -m 2770 -o root -g ${cfg.group} ${socketDir}";
-        ExecStart = "${getExe cfg.package} --daemon --config /etc/custos/config.toml";
+        ExecStart = "${getExe cfg.package} daemon --config /etc/custos/config.toml";
         Restart = "on-failure";
         RestartSec = "1s";
         PrivateTmp = true;

@@ -16,8 +16,6 @@ pub enum Error {
   Policy(String),
   #[error("protocol error: {0}")]
   Protocol(String),
-  #[error("{0}")]
-  Usage(String),
 }
 
 impl Error {
