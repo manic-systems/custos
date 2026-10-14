@@ -10,7 +10,6 @@ use std::{
 
 use data_encoding::BASE64;
 use hmac_sha256::Hash;
-use nix::errno::Errno;
 use serde::{
   Deserialize,
   Serialize,
@@ -421,7 +420,7 @@ fn write_authorized(
 
 fn is_device_gone(error: &std::io::Error) -> bool {
   error.kind() == std::io::ErrorKind::NotFound
-    || error.raw_os_error().map(Errno::from_raw) == Some(Errno::ENODEV)
+    || error.raw_os_error() == Some(libc::ENODEV)
 }
 
 fn read_trimmed_optional(path: impl AsRef<Path>) -> Result<Option<String>> {

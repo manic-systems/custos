@@ -1,25 +1,12 @@
 use std::{
   io,
+  mem,
   os::fd::{
     AsFd,
     AsRawFd,
     BorrowedFd,
+    FromRawFd,
     OwnedFd,
-  },
-};
-
-use nix::{
-  errno::Errno,
-  sys::socket::{
-    AddressFamily,
-    MsgFlags,
-    NetlinkAddr,
-    SockFlag,
-    SockProtocol,
-    SockType,
-    bind,
-    recv,
-    socket,
   },
 };
 
@@ -45,27 +32,48 @@ struct Uevent {
 }
 
 impl UsbEventMonitor {
+  #[expect(
+    clippy::cast_possible_truncation,
+    reason = "AF_NETLINK and the sockaddr_nl size fit their C field types"
+  )]
   pub fn open() -> Result<Self> {
-    let fd = socket(
-      AddressFamily::Netlink,
-      SockType::Datagram,
-      SockFlag::SOCK_CLOEXEC | SockFlag::SOCK_NONBLOCK,
-      SockProtocol::NetlinkKObjectUEvent,
-    )
-    .map_err(|error| {
-      Error::io(
+    // SAFETY: socket takes no pointers.
+    let raw_fd = unsafe {
+      libc::socket(
+        libc::AF_NETLINK,
+        libc::SOCK_DGRAM | libc::SOCK_CLOEXEC | libc::SOCK_NONBLOCK,
+        libc::NETLINK_KOBJECT_UEVENT,
+      )
+    };
+    if raw_fd < 0 {
+      return Err(Error::io(
         "failed to open kobject uevent netlink socket",
-        io::Error::from(error),
-      )
-    })?;
+        io::Error::last_os_error(),
+      ));
+    }
 
-    let address = NetlinkAddr::new(0, 1);
-    bind(fd.as_raw_fd(), &address).map_err(|error| {
-      Error::io(
-        "failed to bind kobject uevent netlink socket",
-        io::Error::from(error),
+    // SAFETY: socket returned a fresh descriptor that nothing else owns.
+    let fd = unsafe { OwnedFd::from_raw_fd(raw_fd) };
+
+    // SAFETY: sockaddr_nl is plain old data, so all zeroes is a valid value.
+    let mut address: libc::sockaddr_nl = unsafe { mem::zeroed() };
+    address.nl_family = libc::AF_NETLINK as libc::sa_family_t;
+    address.nl_groups = 1;
+
+    // SAFETY: `address` is a live sockaddr_nl and the length matches it.
+    let rc = unsafe {
+      libc::bind(
+        fd.as_raw_fd(),
+        (&raw const address).cast(),
+        mem::size_of::<libc::sockaddr_nl>() as libc::socklen_t,
       )
-    })?;
+    };
+    if rc < 0 {
+      return Err(Error::io(
+        "failed to bind kobject uevent netlink socket",
+        io::Error::last_os_error(),
+      ));
+    }
 
     Ok(Self {
       fd,
@@ -93,19 +101,22 @@ impl UsbEventMonitor {
   }
 
   fn recv_one(&mut self) -> Result<Option<Uevent>> {
-    let length = match recv(
-      self.fd.as_raw_fd(),
-      &mut self.buffer,
-      MsgFlags::MSG_DONTWAIT,
-    ) {
-      Ok(length) => length,
-      Err(Errno::EAGAIN | Errno::EINTR) => return Ok(None),
-      Err(error) => {
-        return Err(Error::io(
-          "failed to receive kobject uevent",
-          io::Error::from(error),
-        ));
-      },
+    // SAFETY: the pointer and length describe `self.buffer`, which is
+    // exclusively borrowed for the call.
+    let received = unsafe {
+      libc::recv(
+        self.fd.as_raw_fd(),
+        self.buffer.as_mut_ptr().cast(),
+        self.buffer.len(),
+        libc::MSG_DONTWAIT,
+      )
+    };
+    let Ok(length) = usize::try_from(received) else {
+      let error = io::Error::last_os_error();
+      return match error.kind() {
+        io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted => Ok(None),
+        _ => Err(Error::io("failed to receive kobject uevent", error)),
+      };
     };
 
     if length == 0 {
