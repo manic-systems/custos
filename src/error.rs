@@ -16,11 +16,24 @@ pub enum Error {
   Policy(String),
   #[error("protocol error: {0}")]
   Protocol(String),
+  #[error("{context}: {source}")]
+  Bus {
+    context: String,
+    #[source]
+    source:  dbus::Error,
+  },
 }
 
 impl Error {
   pub fn io(context: impl Into<String>, source: io::Error) -> Self {
     Self::Io {
+      context: context.into(),
+      source,
+    }
+  }
+
+  pub fn bus(context: impl Into<String>, source: dbus::Error) -> Self {
+    Self::Bus {
       context: context.into(),
       source,
     }

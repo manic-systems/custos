@@ -120,6 +120,11 @@ in
         "alice"
       ];
     };
+
+    notifications.enable = mkEnableOption ''
+      desktop notifications for USB authorization decisions, with an Allow Once
+      action on blocked devices, for every user in the control group
+    '';
   };
 
   config = mkIf cfg.enable {
@@ -156,6 +161,20 @@ in
           socketDir
           usbDevicesPath
         ];
+      };
+    };
+
+    systemd.user.services.custos-notify = mkIf cfg.notifications.enable {
+      description = "Custos USB authorization notifications";
+      wantedBy = [ "graphical-session.target" ];
+      partOf = [ "graphical-session.target" ];
+      after = [ "graphical-session.target" ];
+      unitConfig.ConditionGroup = cfg.group;
+
+      serviceConfig = {
+        ExecStart = "${getExe cfg.package} notify --socket ${socketPath}";
+        Restart = "on-failure";
+        RestartSec = "5s";
       };
     };
   };

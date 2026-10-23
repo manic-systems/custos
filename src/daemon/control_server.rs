@@ -16,9 +16,12 @@ use std::{
   time::Duration,
 };
 
+use tracing::warn;
+
 use super::state::State;
 use crate::{
   control::{
+    DeviceEvent,
     MAX_CONTROL_FRAME,
     Request,
     Response,
@@ -98,30 +101,75 @@ pub(super) fn cleanup_control_socket(path: &Path) -> Result<()> {
   }
 }
 
+enum Reply {
+  Response(Response),
+  Subscribe,
+}
+
 pub(super) fn handle_client(
   stream: UnixStream,
   scanner: &Scanner,
   state: &mut State,
-) -> Result<()> {
+) -> Result<Option<UnixStream>> {
   configure_client_stream(&stream)?;
   let mut reader = BufReader::new(stream.try_clone().map_err(|error| {
     Error::io("failed to clone control stream for reading", error)
   })?);
-  let response = match read_request(&mut reader)? {
+  let reply = match read_request(&mut reader)? {
     Ok(request) => {
       match handle_request(&request, scanner, state) {
-        Ok(response) => response,
+        Ok(reply) => reply,
         Err(error) => {
-          Response::Error {
+          Reply::Response(Response::Error {
             message: error.to_string(),
-          }
+          })
         },
       }
     },
-    Err(message) => Response::Error { message },
+    Err(message) => Reply::Response(Response::Error { message }),
   };
 
-  write_response(stream, &response)
+  match reply {
+    Reply::Response(response) => {
+      write_response(&stream, &response)?;
+      Ok(None)
+    },
+    Reply::Subscribe => {
+      write_response(&stream, &Response::Ok {
+        message: "subscribed to device events".to_string(),
+      })?;
+      stream.set_nonblocking(true).map_err(|error| {
+        Error::io("failed to configure event subscriber", error)
+      })?;
+      Ok(Some(stream))
+    },
+  }
+}
+
+pub(super) fn publish_events(
+  subscribers: &mut Vec<UnixStream>,
+  events: &[DeviceEvent],
+) {
+  for event in events {
+    let mut payload = match serde_json::to_vec(event) {
+      Ok(payload) => payload,
+      Err(error) => {
+        warn!(error = %error, "failed to encode device event");
+        continue;
+      },
+    };
+    payload.push(b'\n');
+
+    subscribers.retain(|mut subscriber| {
+      let Err(error) = subscriber.write_all(&payload) else {
+        return true;
+      };
+      if error.kind() != std::io::ErrorKind::BrokenPipe {
+        warn!(error = %error, "dropping device event subscriber");
+      }
+      false
+    });
+  }
 }
 
 fn configure_client_stream(stream: &UnixStream) -> Result<()> {
@@ -179,7 +227,7 @@ fn handle_request(
   request: &Request,
   scanner: &Scanner,
   state: &mut State,
-) -> Result<Response> {
+) -> Result<Reply> {
   let response = match request {
     Request::Status => {
       Response::Status {
@@ -222,12 +270,13 @@ fn handle_request(
         ),
       }
     },
+    Request::Subscribe => return Ok(Reply::Subscribe),
   };
 
-  Ok(response)
+  Ok(Reply::Response(response))
 }
 
-fn write_response(mut stream: UnixStream, response: &Response) -> Result<()> {
+fn write_response(mut stream: &UnixStream, response: &Response) -> Result<()> {
   let mut payload = serde_json::to_vec(response).map_err(|error| {
     Error::Protocol(format!("failed to encode response: {error}"))
   })?;
