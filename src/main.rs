@@ -16,17 +16,21 @@ use std::{
   path::PathBuf,
 };
 
-use clap::{
-  CommandFactory,
-  Parser,
-  Subcommand,
-};
+use pound::Parse;
 use serde::Serialize;
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber::{
+  filter::Targets,
+  layer::SubscriberExt,
+  util::SubscriberInitExt,
+};
 
 use crate::{
   config::{
     Config,
     DEFAULT_CONFIG_PATH,
+    DEFAULT_SOCKET_PATH,
+    DEFAULT_SYSFS_ROOT,
     Mode,
     load_config,
   },
@@ -53,253 +57,192 @@ use crate::{
 };
 
 fn main() {
-  let env_filter = match tracing_subscriber::EnvFilter::try_from_default_env() {
-    Ok(filter) => filter,
-    Err(_error) => tracing_subscriber::EnvFilter::new("warn,custos=info"),
-  };
-  tracing_subscriber::fmt().with_env_filter(env_filter).init();
+  let targets = std::env::var("RUST_LOG")
+    .ok()
+    .and_then(|filter| filter.parse::<Targets>().ok())
+    .unwrap_or_else(|| {
+      Targets::new()
+        .with_default(LevelFilter::WARN)
+        .with_target("custos", LevelFilter::INFO)
+    });
+  tracing_subscriber::registry()
+    .with(tracing_subscriber::fmt::layer())
+    .with(targets)
+    .init();
 
-  if let Err(error) = run(std::env::args().collect()) {
+  if let Err(error) = run(Cli::parse().command) {
     eprintln!("custos: {error}");
     std::process::exit(1);
   }
 }
 
-#[derive(Debug, Parser)]
-#[command(name = "custos", about = "USB authorization daemon and control CLI")]
+/// USB authorization daemon and control CLI
+#[derive(Debug, Parse)]
+#[pound(name = "custos", help_if_empty)]
 struct Cli {
-  #[command(flatten)]
-  daemon_options: DaemonOptions,
-
-  #[command(flatten)]
-  output_options: OutputOptions,
-
-  #[command(subcommand)]
-  command: Option<Command>,
+  #[pound(subcommand)]
+  command: Command,
 }
 
-#[derive(clap::Args, Debug)]
-struct DaemonOptions {
-  #[arg(long, help = "Run the daemon")]
-  daemon: bool,
-
-  #[arg(long, value_name = "PATH", help = "Daemon configuration path")]
-  config: Option<PathBuf>,
-
-  #[arg(long, help = "Run the daemon in dry-run mode")]
-  dry_run: bool,
-
-  #[arg(long, help = "Allow enforcing startup without an allow policy")]
-  unsafe_empty_policy: bool,
-}
-
-#[derive(Clone, Copy, clap::Args, Debug)]
+#[derive(Clone, Copy, Debug, Parse)]
 struct OutputOptions {
-  #[arg(long, global = true, help = "Print supported command output as JSON")]
+  /// Print output as JSON.
+  #[pound(long)]
   json: bool,
 }
 
-#[derive(Debug, Subcommand)]
-#[command(rename_all = "kebab-case")]
+#[derive(Debug, Parse)]
 enum Command {
+  /// Run the daemon.
+  Daemon {
+    #[pound(flatten)]
+    args: StartupArgs,
+  },
   /// Show daemon status.
-  Status(SocketArgs),
+  Status {
+    #[pound(flatten)]
+    args: SocketArgs,
+  },
   /// List devices known to the daemon.
-  Devices(SocketArgs),
+  Devices {
+    #[pound(flatten)]
+    args: SocketArgs,
+  },
   /// Reload policy and apply it.
-  Reload(SocketArgs),
+  Reload {
+    #[pound(flatten)]
+    args: SocketArgs,
+  },
   /// Preview a policy reload without applying it.
-  DryRunReload(SocketArgs),
+  DryRunReload {
+    #[pound(flatten)]
+    args: SocketArgs,
+  },
   /// Allow one known device by daemon device ID.
-  Allow(ApplyArgs),
+  Allow {
+    #[pound(flatten)]
+    args: ApplyArgs,
+  },
   /// Block one known device by daemon device ID.
-  Block(ApplyArgs),
+  Block {
+    #[pound(flatten)]
+    args: ApplyArgs,
+  },
   /// Clear a manual allow/block override for one device.
-  ClearOverride(ApplyArgs),
+  ClearOverride {
+    #[pound(flatten)]
+    args: ApplyArgs,
+  },
   /// Print decisions for the current sysfs state without writing sysfs.
-  DryRun(ConfigArgs),
+  DryRun {
+    #[pound(flatten)]
+    args: ConfigArgs,
+  },
   /// Validate configuration and policy startup safety.
-  Validate(ValidateArgs),
+  Validate {
+    #[pound(flatten)]
+    args: StartupArgs,
+  },
   /// Generate an initial allow policy from currently connected devices.
-  GeneratePolicy(GeneratePolicyArgs),
+  GeneratePolicy {
+    /// sysfs root to scan.
+    #[pound(long, value_name = "PATH", default = { DEFAULT_SYSFS_ROOT })]
+    sysfs_root: PathBuf,
+  },
 }
 
-#[derive(clap::Args, Debug)]
+#[derive(Debug, Parse)]
+struct StartupArgs {
+  /// Configuration path.
+  #[pound(long, value_name = "PATH", default = { DEFAULT_CONFIG_PATH })]
+  config: PathBuf,
+
+  /// Run in dry-run mode.
+  #[pound(long)]
+  dry_run: bool,
+
+  /// Allow enforcing startup without an allow policy.
+  #[pound(long)]
+  unsafe_empty_policy: bool,
+}
+
+#[derive(Debug, Parse)]
 struct SocketArgs {
   /// Control socket path.
-  #[arg(long, value_name = "PATH")]
-  socket: Option<PathBuf>,
+  #[pound(long, value_name = "PATH", default = { DEFAULT_SOCKET_PATH })]
+  socket: PathBuf,
+
+  #[pound(flatten)]
+  output: OutputOptions,
 }
 
-#[derive(clap::Args, Debug)]
+#[derive(Debug, Parse)]
 struct ApplyArgs {
   /// Device ID from `custos devices`.
   device_id: u32,
 
-  /// Control socket path.
-  #[arg(long, value_name = "PATH")]
-  socket: Option<PathBuf>,
+  #[pound(flatten)]
+  socket: SocketArgs,
 }
 
-#[derive(clap::Args, Debug)]
+#[derive(Debug, Parse)]
 struct ConfigArgs {
   /// Configuration path.
-  #[arg(long, value_name = "PATH")]
-  config: Option<PathBuf>,
+  #[pound(long, value_name = "PATH", default = { DEFAULT_CONFIG_PATH })]
+  config: PathBuf,
+
+  #[pound(flatten)]
+  output: OutputOptions,
 }
 
-#[derive(clap::Args, Debug)]
-struct ValidateArgs {
-  /// Configuration path.
-  #[arg(long, value_name = "PATH")]
-  config: Option<PathBuf>,
-
-  /// Validate as a dry run.
-  #[arg(long)]
-  dry_run: bool,
-
-  /// Permit an empty enforcing policy during validation.
-  #[arg(long)]
-  unsafe_empty_policy: bool,
-}
-
-#[derive(clap::Args, Debug)]
-struct GeneratePolicyArgs {
-  /// sysfs root to scan.
-  #[arg(long, value_name = "PATH")]
-  sysfs_root: Option<PathBuf>,
-}
-
-fn run(args: Vec<String>) -> Result<()> {
-  let Some(cli) = parse_cli(args)? else {
-    return Ok(());
-  };
-
-  if cli.daemon_options.daemon {
-    if cli.command.is_some() {
-      return Err(Error::Usage(
-        "`--daemon` cannot be combined with a subcommand".to_string(),
-      ));
-    }
-    if cli.output_options.json {
-      return Err(Error::Usage(
-        "`--json` cannot be combined with `--daemon`".to_string(),
-      ));
-    }
-    return run_daemon_command(cli);
-  }
-
-  if cli.daemon_options.config.is_some()
-    || cli.daemon_options.dry_run
-    || cli.daemon_options.unsafe_empty_policy
-  {
-    return Err(Error::Usage(
-      "`--config`, `--dry-run`, and `--unsafe-empty-policy` are top-level \
-       daemon options; use them with `--daemon` or the relevant subcommand"
-        .to_string(),
-    ));
-  }
-
-  match cli.command {
-    Some(command) => run_command(command, cli.output_options),
-    None => print_help(),
-  }
-}
-
-fn parse_cli(args: Vec<String>) -> Result<Option<Cli>> {
-  match Cli::try_parse_from(args) {
-    Ok(cli) => Ok(Some(cli)),
-    Err(error)
-      if matches!(
-        error.kind(),
-        clap::error::ErrorKind::DisplayHelp
-          | clap::error::ErrorKind::DisplayVersion
-      ) =>
-    {
-      error
-        .print()
-        .map_err(|error| Error::io("failed to print clap output", error))?;
-      Ok(None)
+fn run(command: Command) -> Result<()> {
+  match command {
+    Command::Daemon { args } => {
+      let (config, policy) = startup_config(&args)?;
+      run_daemon(config, policy)
     },
-    Err(error) => Err(Error::Usage(error.to_string())),
+    Command::Status { args } => call_daemon(&args, &Request::Status),
+    Command::Devices { args } => call_daemon(&args, &Request::ListDevices),
+    Command::Reload { args } => call_daemon(&args, &Request::Reload),
+    Command::DryRunReload { args } => {
+      call_daemon(&args, &Request::DryRunReload)
+    },
+    Command::Allow { args } => apply(&args, Action::Allow),
+    Command::Block { args } => apply(&args, Action::Block),
+    Command::ClearOverride { args } => {
+      call_daemon(&args.socket, &Request::ClearOverride { id: args.device_id })
+    },
+    Command::DryRun { args } => dry_run(&args),
+    Command::Validate { args } => validate(&args),
+    Command::GeneratePolicy { sysfs_root } => generate(sysfs_root),
   }
 }
 
-fn run_daemon_command(cli: Cli) -> Result<()> {
-  let config_path = config_path(cli.daemon_options.config);
-  let mut config = load_config(&config_path)?;
-  if cli.daemon_options.dry_run {
+fn startup_config(args: &StartupArgs) -> Result<(Config, Policy)> {
+  let mut config = load_config(&args.config)?;
+  if args.dry_run {
     config.mode = Mode::DryRun;
   }
-  if cli.daemon_options.unsafe_empty_policy {
+  if args.unsafe_empty_policy {
     config.unsafe_allow_empty_policy = true;
   }
   let policy = Policy::load(&config.policy_path, &config)?;
-  run_daemon(config, policy)
+  Ok((config, policy))
 }
 
-fn run_command(command: Command, output: OutputOptions) -> Result<()> {
-  match command {
-    Command::Status(args) => {
-      print_response(
-        send_request(&socket_path(args.socket), &Request::Status)?,
-        output,
-      )
-    },
-    Command::Devices(args) => {
-      print_response(
-        send_request(&socket_path(args.socket), &Request::ListDevices)?,
-        output,
-      )
-    },
-    Command::Reload(args) => {
-      print_response(
-        send_request(&socket_path(args.socket), &Request::Reload)?,
-        output,
-      )
-    },
-    Command::DryRunReload(args) => {
-      print_response(
-        send_request(&socket_path(args.socket), &Request::DryRunReload)?,
-        output,
-      )
-    },
-    Command::Allow(args) => apply(args, Action::Allow, output),
-    Command::Block(args) => apply(args, Action::Block, output),
-    Command::ClearOverride(args) => clear_override(args, output),
-    Command::DryRun(args) => dry_run(args, output),
-    Command::Validate(args) => {
-      reject_json(output, "validate")?;
-      validate(args)
-    },
-    Command::GeneratePolicy(args) => {
-      reject_json(output, "generate-policy")?;
-      generate(args)
-    },
-  }
+fn call_daemon(args: &SocketArgs, request: &Request) -> Result<()> {
+  print_response(send_request(&args.socket, request)?, args.output)
 }
 
-fn apply(args: ApplyArgs, action: Action, output: OutputOptions) -> Result<()> {
-  print_response(
-    send_request(&socket_path(args.socket), &Request::Apply {
-      id: args.device_id,
-      action,
-    })?,
-    output,
-  )
+fn apply(args: &ApplyArgs, action: Action) -> Result<()> {
+  call_daemon(&args.socket, &Request::Apply {
+    id: args.device_id,
+    action,
+  })
 }
 
-fn clear_override(args: ApplyArgs, output: OutputOptions) -> Result<()> {
-  print_response(
-    send_request(&socket_path(args.socket), &Request::ClearOverride {
-      id: args.device_id,
-    })?,
-    output,
-  )
-}
-
-fn dry_run(args: ConfigArgs, output: OutputOptions) -> Result<()> {
-  let mut config = load_config(&config_path(args.config))?;
+fn dry_run(args: &ConfigArgs) -> Result<()> {
+  let mut config = load_config(&args.config)?;
   config.mode = Mode::DryRun;
   let policy = Policy::load(&config.policy_path, &config)?;
   let scanner = Scanner::new(config.sysfs_root);
@@ -323,7 +266,7 @@ fn dry_run(args: ConfigArgs, output: OutputOptions) -> Result<()> {
     devices,
   };
 
-  print!("{}", render_dry_run_report(&report, output)?);
+  print!("{}", render_dry_run_report(&report, args.output)?);
   Ok(())
 }
 
@@ -359,15 +302,8 @@ fn render_dry_run_report(
   Ok(output)
 }
 
-fn validate(args: ValidateArgs) -> Result<()> {
-  let mut config = load_config(&config_path(args.config))?;
-  if args.dry_run {
-    config.mode = Mode::DryRun;
-  }
-  if args.unsafe_empty_policy {
-    config.unsafe_allow_empty_policy = true;
-  }
-  let policy = Policy::load(&config.policy_path, &config)?;
+fn validate(args: &StartupArgs) -> Result<()> {
+  let (config, policy) = startup_config(args)?;
   policy.validate_for_start(&config)?;
   print!(
     "{}",
@@ -379,22 +315,11 @@ fn validate(args: ValidateArgs) -> Result<()> {
   Ok(())
 }
 
-fn generate(args: GeneratePolicyArgs) -> Result<()> {
-  let scanner = Scanner::new(sysfs_root_path(args.sysfs_root));
+fn generate(sysfs_root: PathBuf) -> Result<()> {
+  let scanner = Scanner::new(sysfs_root);
   let devices = scanner.scan()?;
   let policy = generate_policy(&devices);
   print!("{}", policy.to_pretty_toml()?);
-  Ok(())
-}
-
-fn reject_json(options: OutputOptions, command: &str) -> Result<()> {
-  if options.json {
-    return Err(Error::Usage(format!(
-      "`custos {command} --json` is not supported; JSON output is available \
-       for daemon-backed commands and dry-run"
-    )));
-  }
-
   Ok(())
 }
 
@@ -710,39 +635,6 @@ fn push_fmt(output: &mut String, args: fmt::Arguments<'_>) -> Result<()> {
     .map_err(|_| Error::Protocol("failed to render output".to_string()))
 }
 
-fn print_help() -> Result<()> {
-  let mut command = Cli::command();
-  command
-    .print_help()
-    .map_err(|error| Error::io("failed to print help", error))?;
-  println!();
-  Ok(())
-}
-
-#[allow(clippy::option_if_let_else)]
-fn config_path(config: Option<PathBuf>) -> PathBuf {
-  match config {
-    Some(path) => path,
-    None => PathBuf::from(DEFAULT_CONFIG_PATH),
-  }
-}
-
-#[allow(clippy::option_if_let_else)]
-fn socket_path(socket: Option<PathBuf>) -> PathBuf {
-  match socket {
-    Some(path) => path,
-    None => Config::default().socket_path,
-  }
-}
-
-#[allow(clippy::option_if_let_else)]
-fn sysfs_root_path(sysfs_root: Option<PathBuf>) -> PathBuf {
-  match sysfs_root {
-    Some(path) => path,
-    None => Config::default().sysfs_root,
-  }
-}
-
 #[cfg(test)]
 mod tests {
   use std::error::Error as StdError;
@@ -759,39 +651,38 @@ mod tests {
     Box::new(std::io::Error::other(message.into()))
   }
 
-  fn parse_command(args: &[&str]) -> TestResult<Cli> {
-    parse_cli(args.iter().map(|arg| (*arg).to_string()).collect())?
-      .map_or_else(|| Err(test_error("expected parsed command")), Ok)
+  fn parse_command(args: &[&str]) -> TestResult<Command> {
+    Ok(Cli::try_parse_from(args.iter().copied())?.command)
   }
 
   #[test]
   fn parses_daemon_flags() -> TestResult {
-    let cli = parse_command(&[
-      "custos",
-      "--daemon",
+    let command = parse_command(&[
+      "daemon",
       "--dry-run",
       "--unsafe-empty-policy",
       "--config",
       "/tmp/config.toml",
     ])?;
 
-    assert!(cli.daemon_options.daemon);
-    assert!(cli.daemon_options.dry_run);
-    assert!(cli.daemon_options.unsafe_empty_policy);
-    assert_eq!(
-      cli.daemon_options.config.as_deref(),
-      Some(std::path::Path::new("/tmp/config.toml"))
-    );
+    let Command::Daemon { args } = command else {
+      return Err(test_error(format!(
+        "expected daemon command, got {command:?}"
+      )));
+    };
+    assert!(args.dry_run);
+    assert!(args.unsafe_empty_policy);
+    assert_eq!(args.config, std::path::Path::new("/tmp/config.toml"));
     Ok(())
   }
 
   #[test]
   fn parses_apply_command() -> TestResult {
-    let cli =
-      parse_command(&["custos", "allow", "7", "--socket", "/tmp/custos.sock"])?;
+    let command =
+      parse_command(&["allow", "7", "--socket", "/tmp/custos.sock"])?;
 
-    let args = match cli.command {
-      Some(Command::Allow(args)) => args,
+    let args = match command {
+      Command::Allow { args } => args,
       other => {
         return Err(test_error(format!(
           "expected allow command, got {other:?}"
@@ -799,19 +690,15 @@ mod tests {
       },
     };
     assert_eq!(args.device_id, 7);
-    assert_eq!(
-      args.socket.as_deref(),
-      Some(std::path::Path::new("/tmp/custos.sock"))
-    );
+    assert_eq!(args.socket.socket, std::path::Path::new("/tmp/custos.sock"));
     Ok(())
   }
 
   #[test]
   fn parses_json_for_daemon_backed_commands() -> TestResult {
-    let cli = parse_command(&["custos", "devices", "--json"])?;
+    let command = parse_command(&["devices", "--json"])?;
 
-    assert!(cli.output_options.json);
-    assert!(matches!(cli.command, Some(Command::Devices(_))));
+    assert!(matches!(command, Command::Devices { args } if args.output.json));
     Ok(())
   }
 
@@ -984,22 +871,11 @@ mod tests {
   }
 
   #[test]
-  fn rejects_json_for_local_commands() -> TestResult {
-    let error = match reject_json(JSON_OUTPUT, "generate-policy") {
-      Ok(()) => return Err(test_error("expected JSON rejection")),
-      Err(error) => error,
-    };
-
-    assert!(error.to_string().contains("not supported"));
-    Ok(())
-  }
-
-  #[test]
   fn parses_clear_override_command() -> TestResult {
-    let cli = parse_command(&["custos", "clear-override", "7"])?;
+    let command = parse_command(&["clear-override", "7"])?;
 
-    let args = match cli.command {
-      Some(Command::ClearOverride(args)) => args,
+    let args = match command {
+      Command::ClearOverride { args } => args,
       other => {
         return Err(test_error(format!(
           "expected clear-override command, got {other:?}"

@@ -1,24 +1,16 @@
 use std::{
-  io,
+  fs::File,
+  io::{
+    self,
+    Read,
+  },
+  mem,
   os::fd::{
     AsFd,
     BorrowedFd,
+    FromRawFd,
   },
-};
-
-use nix::{
-  errno::Errno,
-  sys::{
-    signal::{
-      SigSet,
-      SigmaskHow,
-      Signal,
-    },
-    signalfd::{
-      SfdFlags,
-      SignalFd,
-    },
-  },
+  ptr,
 };
 
 use crate::error::{
@@ -27,32 +19,48 @@ use crate::error::{
 };
 
 pub struct ShutdownSignal {
-  fd:            SignalFd,
-  previous_mask: SigSet,
+  fd:            File,
+  previous_mask: libc::sigset_t,
 }
 
 impl ShutdownSignal {
   pub fn install() -> Result<Self> {
     let mask = shutdown_signal_mask();
-    let previous_mask =
-      mask
-        .thread_swap_mask(SigmaskHow::SIG_BLOCK)
-        .map_err(|error| {
-          Error::io("failed to block shutdown signals", io::Error::from(error))
-        })?;
-
-    let fd = SignalFd::with_flags(
-      &mask,
-      SfdFlags::SFD_NONBLOCK | SfdFlags::SFD_CLOEXEC,
-    )
-    .map_err(|error| {
-      restore_mask_after_install_failure(previous_mask);
-      Error::io(
-        "failed to create shutdown signal descriptor",
-        io::Error::from(error),
+    let mut previous_mask = empty_signal_set();
+    // SAFETY: both pointers refer to initialized sigsets that outlive the call.
+    let rc = unsafe {
+      libc::pthread_sigmask(
+        libc::SIG_BLOCK,
+        &raw const mask,
+        &raw mut previous_mask,
       )
-    })?;
+    };
+    if rc != 0 {
+      return Err(Error::io(
+        "failed to block shutdown signals",
+        io::Error::from_raw_os_error(rc),
+      ));
+    }
 
+    // SAFETY: `mask` is an initialized sigset and -1 asks for a new descriptor.
+    let raw_fd = unsafe {
+      libc::signalfd(
+        -1,
+        &raw const mask,
+        libc::SFD_NONBLOCK | libc::SFD_CLOEXEC,
+      )
+    };
+    if raw_fd < 0 {
+      let error = io::Error::last_os_error();
+      restore_mask(&previous_mask);
+      return Err(Error::io(
+        "failed to create shutdown signal descriptor",
+        error,
+      ));
+    }
+
+    // SAFETY: signalfd returned a fresh descriptor that nothing else owns.
+    let fd = unsafe { File::from_raw_fd(raw_fd) };
     Ok(Self { fd, previous_mask })
   }
 
@@ -62,16 +70,19 @@ impl ShutdownSignal {
 
   pub fn drain(&self) -> Result<bool> {
     let mut saw_signal = false;
+    let mut buffer = [0; mem::size_of::<libc::signalfd_siginfo>()];
 
     loop {
-      match self.fd.read_signal() {
-        Ok(Some(_signal)) => saw_signal = true,
-        Ok(None) => return Ok(saw_signal),
-        Err(Errno::EINTR) => (),
+      match (&self.fd).read(&mut buffer) {
+        Ok(_length) => saw_signal = true,
+        Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+          return Ok(saw_signal);
+        },
+        Err(error) if error.kind() == io::ErrorKind::Interrupted => (),
         Err(error) => {
           return Err(Error::io(
             "failed to read shutdown signal descriptor",
-            io::Error::from(error),
+            error,
           ));
         },
       }
@@ -81,19 +92,34 @@ impl ShutdownSignal {
 
 impl Drop for ShutdownSignal {
   fn drop(&mut self) {
-    let _restore_result = self.previous_mask.thread_set_mask();
+    restore_mask(&self.previous_mask);
   }
 }
 
-fn shutdown_signal_mask() -> SigSet {
-  let mut mask = SigSet::empty();
-  mask.add(Signal::SIGTERM);
-  mask.add(Signal::SIGINT);
+fn empty_signal_set() -> libc::sigset_t {
+  let mut set = mem::MaybeUninit::uninit();
+  // SAFETY: sigemptyset fully initializes the set it is given.
+  unsafe {
+    libc::sigemptyset(set.as_mut_ptr());
+    set.assume_init()
+  }
+}
+
+fn shutdown_signal_mask() -> libc::sigset_t {
+  let mut mask = empty_signal_set();
+  // SAFETY: `mask` is an initialized sigset and both signals are valid.
+  unsafe {
+    libc::sigaddset(&raw mut mask, libc::SIGTERM);
+    libc::sigaddset(&raw mut mask, libc::SIGINT);
+  }
   mask
 }
 
-fn restore_mask_after_install_failure(previous_mask: SigSet) {
-  let _restore_result = previous_mask.thread_set_mask();
+fn restore_mask(previous_mask: &libc::sigset_t) {
+  // SAFETY: `previous_mask` is the initialized sigset pthread_sigmask filled.
+  unsafe {
+    libc::pthread_sigmask(libc::SIG_SETMASK, previous_mask, ptr::null_mut());
+  }
 }
 
 #[cfg(test)]

@@ -20,6 +20,8 @@ use crate::{
 };
 
 pub const DEFAULT_CONFIG_PATH: &str = "/etc/custos/config.toml";
+pub const DEFAULT_SOCKET_PATH: &str = "/run/custos/control.sock";
+pub const DEFAULT_SYSFS_ROOT: &str = "/sys";
 
 #[derive(
   Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize,
@@ -63,8 +65,8 @@ impl Default for Config {
     Self {
       mode:                      Mode::default(),
       policy_path:               PathBuf::from("/etc/custos/policy.toml"),
-      socket_path:               PathBuf::from("/run/custos/control.sock"),
-      sysfs_root:                PathBuf::from("/sys"),
+      socket_path:               PathBuf::from(DEFAULT_SOCKET_PATH),
+      sysfs_root:                PathBuf::from(DEFAULT_SYSFS_ROOT),
       unsafe_allow_empty_policy: false,
       default_action:            Action::Block,
       controllers:               ControllerConfig::default(),
